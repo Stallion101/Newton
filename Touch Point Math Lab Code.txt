@@ -1,0 +1,122 @@
+﻿import React, { useState } from 'react';
+import { RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+
+
+const TouchBox = ({ count, color }) => {
+  const [touched, setTouched] = useState(new Array(count).fill(false));
+
+
+  const toggleTouch = (index) => {
+    const newTouched = [...touched];
+    newTouched[index] = !newTouched[index];
+    setTouched(newTouched);
+    if (window.navigator.vibrate) window.navigator.vibrate(30);
+  };
+
+
+  return (
+    <div className="mt-4 p-3 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+      <div className="flex flex-wrap gap-2 justify-center">
+        {touched.map((isTouched, i) => (
+          <button
+            key={i}
+            onClick={() => toggleTouch(i)}
+            className={`w-8 h-8 rounded-full border-2 transition-all ${
+              isTouched ? 'shadow-inner scale-95' : 'bg-white border-slate-300'
+            }`}
+            style={{ 
+              backgroundColor: isTouched ? color : 'white',
+              borderColor: isTouched ? color : '#cbd5e1' 
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+const ProblemCard = ({ n1, n2, color }) => {
+  const [userInput, setUserInput] = useState('');
+  const correctAnswer = n1 + n2;
+  const isCorrect = parseInt(userInput) === correctAnswer;
+  const isWrong = userInput.length > 0 && parseInt(userInput) !== correctAnswer;
+
+
+  return (
+    <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center">
+      <div className="flex items-center justify-center gap-4 text-6xl font-black text-slate-800">
+        <span>{n1}</span>
+        <span className="text-indigo-600">+</span>
+        <span>{n2}</span>
+        <span className="text-slate-300">=</span>
+        <div className="relative">
+          <input 
+            type="number" 
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            className={`w-24 h-16 border-b-4 text-center focus:outline-none transition-colors ${
+              isCorrect ? 'border-green-500 text-green-600' : 
+              isWrong ? 'border-red-400 text-red-500' : 'border-slate-200'
+            }`}
+          />
+          <div className="absolute -right-10 top-4">
+            {isCorrect && <CheckCircle2 className="w-8 h-8 text-green-500 animate-bounce" />}
+            {isWrong && <XCircle className="w-8 h-8 text-red-400" />}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-6 mt-8 w-full">
+        <TouchBox count={n1} color={color} />
+        <TouchBox count={n2} color={color} />
+      </div>
+    </div>
+  );
+};
+
+
+export default function TouchPointMathLab() {
+  const [problems, setProblems] = useState([
+    { id: 1, n1: 3, n2: 5, color: '#6366f1' },
+    { id: 2, n1: 4, n2: 2, color: '#ec4899' },
+    { id: 3, n1: 6, n2: 3, color: '#8b5cf6' },
+    { id: 4, n1: 5, n2: 4, color: '#06b6d4' }
+  ]);
+
+
+  const generateNewProblems = () => {
+    const colors = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4'];
+    const newBatch = Array.from({ length: 4 }, (_, i) => ({
+      id: Date.now() + i,
+      n1: Math.floor(Math.random() * 9) + 1,
+      n2: Math.floor(Math.random() * 9) + 1,
+      color: colors[i % colors.length]
+    }));
+    setProblems(newBatch);
+  };
+
+
+  return (
+    <div className="space-y-6 pb-20">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Touch-Point Math Lab</h2>
+          <p className="text-slate-500">Interactive for tablets. Use "New Problems" for more practice.</p>
+        </div>
+        <button 
+          onClick={generateNewProblems} 
+          className="flex items-center gap-2 bg-indigo-600 px-6 py-2 rounded-xl font-bold text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95"
+        >
+          <RefreshCw className="w-4 h-4" /> New Problems
+        </button>
+      </div>
+
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {problems.map((p) => (
+          <ProblemCard key={p.id} n1={p.n1} n2={p.n2} color={p.color} />
+        ))}
+      </div>
+    </div>
+  );
+}
