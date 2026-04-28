@@ -1,0 +1,333 @@
+import { useState, useRef } from "react";
+import { Calculator, Sparkles, Printer, RefreshCw, BookmarkPlus, ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
+import { GRADES, TOPICS, getAvailableTopics, generateProblems } from "@/lib/mathGenerator";
+import WorksheetPreview from "./WorksheetPreview";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+
+const TIER_CONFIG = {
+  "Tier 1": { fontSize: "text-base", spacing: "gap-4", columns: 4, label: "Standard", desc: "Regular spacing and font size" },
+  "Tier 2": { fontSize: "text-lg", spacing: "gap-5", columns: 3, label: "Supported", desc: "Larger font, more space" },
+  "Tier 3": { fontSize: "text-xl", spacing: "gap-6", columns: 2, label: "Intensive", desc: "Largest font, maximum space" },
+};
+
+
+export default function MathWorksheetGenerator() {
+  const [grade, setGrade] = useState("Grade 2");
+  const [topic, setTopic] = useState("Addition");
+  const [problemCount, setProblemCount] = useState(12);
+  const [tier, setTier] = useState("Tier 1");
+  const [showAnswers, setShowAnswers] = useState(false);
+  const [showA11y, setShowA11y] = useState(false);
+  const [dyslexicFont, setDyslexicFont] = useState(false);
+  const [mixOperations, setMixOperations] = useState(false);
+  const [wordProblems, setWordProblems] = useState(false);
+  const [problems, setProblems] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const previewRef = useRef(null);
+
+
+  async function handleSaveToActivities() {
+    setSaving(true);
+    await base44.entities.Activity.create({
+      title: `${grade} ${topic} Worksheet`,
+      type: "Worksheet",
+      grade,
+      subject: "Math",
+      content: problems.map(p => p.display || `${p.a} ${p.op} ${p.b} = ?`).join(", "),
+      source_tool: "Math Worksheet Generator",
+    });
+    setSaving(false);
+    toast.success("Resource saved to My Resources!");
+  }
+
+
+  const availableTopics = getAvailableTopics(grade);
+
+
+  function handleGradeChange(g) {
+    setGrade(g);
+    const topics = getAvailableTopics(g);
+    if (!topics.includes(topic)) setTopic(topics[0]);
+    setProblems(null);
+  }
+
+
+  function handleGenerate() {
+    setGenerating(true);
+    setTimeout(() => {
+      const generated = generateProblems(grade, topic, problemCount, { mixOperations, wordProblems });
+      setProblems(generated);
+      setGenerating(false);
+    }, 600);
+  }
+
+
+  function handleRegenerate() {
+    setProblems(null);
+    setTimeout(() => handleGenerate(), 100);
+  }
+
+
+  function handlePrint() {
+    window.print();
+  }
+
+
+  return (
+    <div className="space-y-6">
+      {/* Config Panel */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#1A2B3C" }}>
+            <Calculator className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl" style={{ color: "#1A2B3C" }}>Math Worksheet Lab</h2>
+            <p className="text-sm text-muted-foreground">Configure and generate a printable worksheet in seconds</p>
+          </div>
+        </div>
+
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+          {/* Grade */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-foreground">Grade Level</Label>
+            <Select value={grade} onValueChange={handleGradeChange}>
+              <SelectTrigger className="rounded-xl border-border/60 focus:ring-newton-pink">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GRADES.map((g) => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+
+          {/* Topic */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-foreground">Math Topic</Label>
+            <Select value={topic} onValueChange={(v) => { setTopic(v); setProblems(null); }}>
+              <SelectTrigger className="rounded-xl border-border/60 focus:ring-newton-pink">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTopics.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+
+          {/* Problem Count */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-foreground">
+              Number of Problems <span className="text-newton-pink font-bold">({problemCount})</span>
+            </Label>
+            <div className="pt-2 px-1">
+              <Slider
+                min={5}
+                max={30}
+                step={1}
+                value={[problemCount]}
+                onValueChange={([v]) => { setProblemCount(v); setProblems(null); }}
+                className="[&_.slider-thumb]:bg-newton-pink [&_.slider-track]:bg-newton-pink"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>5</span><span>30</span>
+              </div>
+            </div>
+          </div>
+
+
+          {/* Tier */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-foreground">Accommodation Tier</Label>
+            <div className="flex gap-1" role="group" aria-label="Accommodation tier">
+              {Object.keys(TIER_CONFIG).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTier(t)}
+                  aria-pressed={tier === t}
+                  aria-label={`${t}: ${TIER_CONFIG[t].label}`}
+                  className={`flex-1 py-2 px-2 rounded-xl text-xs font-semibold border-2 transition-all duration-200 min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-newton-pink ${
+                    tier === t
+                      ? "border-newton-pink bg-newton-pink text-white shadow-md shadow-newton-pink/25"
+                      : "border-border/50 text-muted-foreground hover:border-newton-pink/40 hover:text-foreground"
+                  }`}
+                >
+                  {t.replace("Tier ", "T")}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">{TIER_CONFIG[tier].desc}</p>
+          </div>
+        </div>
+
+
+        {/* Answer Key toggle */}
+        <div className="flex items-center gap-3 mb-4">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <button
+              role="switch"
+              aria-checked={showAnswers}
+              aria-label="Show answer key"
+              onClick={() => setShowAnswers(!showAnswers)}
+              className={`w-10 h-6 rounded-full transition-colors duration-200 relative ${showAnswers ? "bg-newton-pink" : "bg-border"}`}
+            >
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${showAnswers ? "translate-x-4" : ""}`} />
+            </button>
+            <span className="text-sm font-medium">Show Answer Key</span>
+          </label>
+        </div>
+
+
+        {/* Collapsible Accessibility & Differentiation */}
+        <div className="border border-border/40 rounded-xl overflow-hidden mb-4">
+          <button
+            onClick={() => setShowA11y(!showA11y)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-secondary/30 hover:bg-secondary/50 transition-colors text-sm font-semibold text-foreground"
+          >
+            <span>⚙️ Accessibility & Differentiation</span>
+            {showA11y ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+          {showA11y && (
+            <div className="px-4 py-4 flex flex-wrap gap-4">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <button
+                  role="switch"
+                  aria-checked={dyslexicFont}
+                  onClick={() => setDyslexicFont(!dyslexicFont)}
+                  className={`w-10 h-6 rounded-full transition-colors duration-200 relative ${dyslexicFont ? "bg-newton-purple" : "bg-border"}`}
+                >
+                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${dyslexicFont ? "translate-x-4" : ""}`} />
+                </button>
+                <span className="text-sm font-medium">OpenDyslexic Font</span>
+              </label>
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <Checkbox
+                  checked={mixOperations}
+                  onCheckedChange={(v) => { setMixOperations(!!v); setProblems(null); }}
+                  className="data-[state=checked]:bg-newton-pink data-[state=checked]:border-newton-pink"
+                />
+                <span className="text-sm font-medium">Mix Operations (+/−)</span>
+              </label>
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <Checkbox
+                  checked={wordProblems}
+                  onCheckedChange={(v) => { setWordProblems(!!v); setProblems(null); }}
+                  className="data-[state=checked]:bg-newton-pink data-[state=checked]:border-newton-pink"
+                />
+                <span className="text-sm font-medium">Convert to Word Problems</span>
+              </label>
+            </div>
+          )}
+        </div>
+
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            {problems && (
+            <Button
+              onClick={handleRegenerate}
+              variant="outline"
+              className="rounded-full border-newton-pink/40 text-newton-pink hover:bg-newton-pink/10 gap-2"
+            >
+              <RefreshCw className="w-4 h-4" /> Regenerate
+            </Button>
+          )}
+          <Button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="rounded-full text-white shadow-md px-6 gap-2"
+            style={{ backgroundColor: "#1A2B3C" }}
+          >
+            {generating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate Worksheet
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+
+      {/* Worksheet Preview */}
+      {problems && (
+        <div className="space-y-4">
+          {/* Print button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{problems.length} problems</span> ·
+              <span>{grade}</span> ·
+              <span>{topic}</span> ·
+              <span className="px-2 py-0.5 rounded-full bg-newton-pink/10 text-newton-pink text-xs font-semibold">{tier}</span>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSaveToActivities}
+                disabled={saving}
+                variant="outline"
+                className="rounded-full gap-2 border-newton-pink/60 text-newton-pink hover:bg-newton-pink/10"
+              >
+                <BookmarkPlus className="w-4 h-4" />
+                {saving ? "Saving..." : "Save to My Resources"}
+              </Button>
+              <Button
+                onClick={handlePrint}
+                variant="outline"
+                className="rounded-full gap-2 border-border/60"
+              >
+                <Printer className="w-4 h-4" /> Print / Save PDF
+              </Button>
+            </div>
+          </div>
+
+
+          <div ref={previewRef}>
+            <WorksheetPreview
+              problems={problems}
+              grade={grade}
+              topic={mixOperations ? "Mixed (+/−)" : topic}
+              tier={tier}
+              showAnswers={showAnswers}
+              tierConfig={TIER_CONFIG[tier]}
+              dyslexicFont={dyslexicFont}
+              wordProblems={wordProblems}
+            />
+          </div>
+        </div>
+      )}
+
+
+      {/* Empty state */}
+      {!problems && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-newton-pink/10 flex items-center justify-center mb-4">
+            <Calculator className="w-8 h-8 text-newton-pink" />
+          </div>
+          <h3 className="font-display font-semibold text-lg mb-2">Ready to generate</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Configure the options above and click <strong>Generate Worksheet</strong> to create a printable math worksheet.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
