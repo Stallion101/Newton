@@ -1,0 +1,468 @@
+import { useState, useMemo } from "react";
+import { Sparkles, RefreshCw, BookmarkPlus, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const NAVY   = "#1A2B3C";
+const TEAL   = "#00BFA5";
+const AMBER  = "#FFB300";
+const SALMON = "#FF7043";
+const LIME   = "#76B5B3";
+
+
+// ─── Sample passages ─────────────────────────────────────────────────────────
+const PASSAGES = [
+  {
+    grade: "K–1",
+    title: "The Frog",
+    text: "A frog sat on a log. It was green and small. The frog saw a bug. It jumped up fast. The frog ate the bug. Then it sat still again.",
+  },
+  {
+    grade: "K–1",
+    title: "Rain Day",
+    text: "The rain came down hard. Mia looked out the window. She saw big puddles on the street. She put on her boots and went outside. She jumped in every puddle. She was wet but happy.",
+  },
+  {
+    grade: "Grade 2",
+    title: "Penguins",
+    text: "Penguins are birds that cannot fly. They live near cold oceans. Penguins use their wings as flippers to swim fast. They eat fish and squid. Baby penguins stay warm under their parents' feathers.",
+  },
+  {
+    grade: "Grade 2",
+    title: "The Sun",
+    text: "The sun is a giant star. It gives Earth heat and light. Without the sun, plants could not grow. Animals and people need the sun to survive. The sun rises every morning and sets at night.",
+  },
+  {
+    grade: "Grade 3",
+    title: "Rain Forests",
+    text: "Rain forests are home to more than half of all plants and animals on Earth. They receive heavy rain almost every day. The tall trees form a thick canopy that blocks most sunlight. Many medicines we use today come from rain forest plants. Rain forests are important to protect.",
+  },
+  {
+    grade: "Grade 3",
+    title: "Bees",
+    text: "Bees are some of the most important insects on Earth. They fly from flower to flower collecting nectar. As they travel, they spread pollen which helps plants grow fruits and seeds. Without bees, many of our foods would disappear. Beekeepers help protect bee populations.",
+  },
+  {
+    grade: "Grade 4–5",
+    title: "Volcanoes",
+    text: "Volcanoes are openings in the Earth's crust where hot melted rock called magma escapes to the surface. When a volcano erupts, lava, ash, and gases shoot into the air. Some eruptions can be seen from hundreds of miles away. Although volcanoes can be destructive, the minerals they release make nearby soil very fertile for farming.",
+  },
+  {
+    grade: "Grade 4–5",
+    title: "The Water Cycle",
+    text: "Water on Earth is always moving. When the sun heats water in oceans and lakes, it evaporates into the air as water vapor. High in the sky, this vapor cools and forms clouds through condensation. When the clouds get heavy, precipitation falls as rain or snow. The water flows back into rivers and oceans, and the cycle begins again.",
+  },
+];
+
+
+const GRADES = ["K–1", "Grade 2", "Grade 3", "Grade 4–5"];
+const MAX_WORDS = 10;
+
+
+// ─── Tokenize paragraph into word tokens (preserving punctuation attached to words) ──
+function tokenize(text) {
+  // Split keeping whitespace boundaries
+  return text.match(/\S+|\s+/g) || [];
+}
+
+
+function wordCount(str) {
+  return str.trim().split(/\s+/).filter(Boolean).length;
+}
+
+
+// ─── Step indicator ───────────────────────────────────────────────────────────
+function StepBadge({ num, label, active, done }) {
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${active ? "bg-white shadow-md" : done ? "opacity-80" : "opacity-40"}`}>
+      <div
+        className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+        style={{ backgroundColor: done ? TEAL : active ? SALMON : "#CBD5E0" }}
+      >
+        {done ? <CheckCircle2 className="w-4 h-4" /> : num}
+      </div>
+      <span className="text-xs font-semibold text-foreground hidden sm:block">{label}</span>
+    </div>
+  );
+}
+
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function ParagraphShrinking() {
+  const [gradeFilter, setGradeFilter] = useState("Grade 2");
+  const [passage, setPassage] = useState(null);
+  const [selectedWords, setSelectedWords] = useState(new Set());
+  const [mainIdea, setMainIdea] = useState("");
+  const [step, setStep] = useState(0); // 0=select, 1=read, 2=pick, 3=shrink, 4=done
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+
+  const filteredPassages = PASSAGES.filter(p => p.grade === gradeFilter);
+
+
+  function handleSelectPassage(p) {
+    setPassage(p);
+    setSelectedWords(new Set());
+    setMainIdea("");
+    setStep(1);
+    setSaved(false);
+  }
+
+
+  const tokens = useMemo(() => passage ? tokenize(passage.text) : [], [passage]);
+
+
+  function toggleWord(word) {
+    const clean = word.replace(/[^a-zA-Z0-9']/g, "").toLowerCase();
+    if (!clean) return;
+    setSelectedWords(prev => {
+      const next = new Set(prev);
+      if (next.has(clean)) next.delete(clean); else next.add(clean);
+      return next;
+    });
+  }
+
+
+  const ideaWordCount = wordCount(mainIdea);
+  const overLimit = ideaWordCount > MAX_WORDS;
+
+
+  async function handleSave() {
+    if (!passage || !mainIdea.trim()) return;
+    setSaving(true);
+    const content = `Paragraph Shrinking: ${passage.title} (${passage.grade})\n\nOriginal:\n${passage.text}\n\nKeywords: ${[...selectedWords].join(", ")}\n\nMain Idea: ${mainIdea}`;
+    await base44.entities.Activity.create({
+      title: `Paragraph Shrinking: ${passage.title}`,
+      type: "Worksheet",
+      grade: gradeFilter,
+      subject: "ELA",
+      content,
+      source_tool: "Paragraph Shrinking",
+    });
+    setSaving(false);
+    setSaved(true);
+    toast.success("Success! This resource is now available in your Skill Builders library.");
+  }
+
+
+  function handleReset() {
+    setPassage(null);
+    setSelectedWords(new Set());
+    setMainIdea("");
+    setStep(0);
+    setSaved(false);
+  }
+
+
+  // ─── STEP 0: Passage Picker ───────────────────────────────────────────────
+  if (step === 0) {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: NAVY }}>🌿</div>
+            <div>
+              <h2 className="font-display font-bold text-xl" style={{ color: NAVY }}>Paragraph Shrinking</h2>
+              <p className="text-sm text-muted-foreground">Read · Pick Keywords · Shrink to a Main Idea</p>
+            </div>
+          </div>
+
+
+          <div className="space-y-2 mb-5">
+            <Label className="text-sm font-semibold">Grade Level</Label>
+            <Select value={gradeFilter} onValueChange={setGradeFilter}>
+              <SelectTrigger className="rounded-xl border-border/60 w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {GRADES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredPassages.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => handleSelectPassage(p)}
+                className="text-left p-4 rounded-2xl border-2 border-border/40 bg-secondary/20 hover:border-teal-400 hover:bg-teal-50/40 transition-all group"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">📄</span>
+                  <span className="font-display font-bold text-base" style={{ color: NAVY }}>{p.title}</span>
+                </div>
+                <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{p.text}</p>
+                <div className="mt-3 flex justify-end">
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full text-white" style={{ backgroundColor: TEAL }}>
+                    Start →
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  // ─── STEPS 1–4: Activity ─────────────────────────────────────────────────
+  return (
+    <div className="space-y-5">
+      {/* Top bar: steps + reset */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-border/50 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <StepBadge num={1} label="Read" active={step === 1} done={step > 1} />
+          <div className="w-5 h-0.5 bg-border/50 hidden sm:block" />
+          <StepBadge num={2} label="Pick Keywords" active={step === 2} done={step > 2} />
+          <div className="w-5 h-0.5 bg-border/50 hidden sm:block" />
+          <StepBadge num={3} label="Shrink It" active={step === 3} done={step > 3} />
+        </div>
+        <button onClick={handleReset} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+          <RefreshCw className="w-3.5 h-3.5" /> New Passage
+        </button>
+      </div>
+
+
+      {/* ── Step 1: Reading Phase ── */}
+      {step === 1 && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-2xl">📖</span>
+            <h3 className="font-display font-bold text-lg" style={{ color: NAVY }}>Step 1: Read the Paragraph</h3>
+          </div>
+          <div
+            className="rounded-xl p-5 mb-5 leading-loose text-foreground"
+            style={{ fontSize: "1.15rem", lineHeight: "2.1", background: "#F0FDFA", border: `2px solid ${TEAL}30` }}
+          >
+            <p className="font-semibold text-sm mb-3" style={{ color: TEAL }}>📚 {passage.title}</p>
+            <p style={{ fontFamily: "'Lexend', sans-serif" }}>{passage.text}</p>
+          </div>
+          <Button
+            onClick={() => setStep(2)}
+            className="rounded-full px-8 text-white gap-2 shadow-md"
+            style={{ backgroundColor: TEAL }}
+          >
+            I'm ready to pick keywords →
+          </Button>
+        </div>
+      )}
+
+
+      {/* ── Step 2: Word Picker ── */}
+      {step === 2 && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🖱️</span>
+            <h3 className="font-display font-bold text-lg" style={{ color: NAVY }}>Step 2: Tap the Most Important Words</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-5">Tap a word to highlight it. Tap again to un-select it.</p>
+
+
+          {/* Word Picker */}
+          <div
+            className="rounded-xl p-5 mb-4 leading-relaxed"
+            style={{ background: "#FFFDF0", border: `2px solid ${AMBER}40`, fontSize: "1.2rem", lineHeight: "2.4" }}
+          >
+            {tokens.map((token, i) => {
+              const isWhitespace = /^\s+$/.test(token);
+              if (isWhitespace) return <span key={i}>{token}</span>;
+              const clean = token.replace(/[^a-zA-Z0-9']/g, "").toLowerCase();
+              const isSelected = selectedWords.has(clean);
+              const punctuation = token.match(/[^a-zA-Z0-9']+$/)?.[0] || "";
+              const wordPart = token.replace(/[^a-zA-Z0-9']+$/, "");
+              return (
+                <span key={i}>
+                  <button
+                    onClick={() => toggleWord(token)}
+                    className="inline rounded-lg px-1 transition-all duration-150 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                    style={{
+                      backgroundColor: isSelected ? SALMON : "transparent",
+                      color: isSelected ? "#fff" : NAVY,
+                      boxShadow: isSelected ? `0 2px 8px ${SALMON}55` : "none",
+                      transform: isSelected ? "scale(1.06)" : "scale(1)",
+                      cursor: "pointer",
+                      fontFamily: "'Lexend', sans-serif",
+                    }}
+                  >
+                    {wordPart}
+                  </button>
+                  <span style={{ color: NAVY, fontFamily: "'Lexend', sans-serif" }}>{punctuation}</span>
+                </span>
+              );
+            })}
+          </div>
+
+
+          {/* Selected keywords display */}
+          <div className="mb-5 min-h-[48px] flex flex-wrap gap-2 items-center">
+            {selectedWords.size === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No keywords selected yet…</p>
+            ) : (
+              <>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Keywords:</span>
+                {[...selectedWords].map(w => (
+                  <span key={w} className="px-3 py-1 rounded-full text-white text-sm font-semibold shadow-sm" style={{ backgroundColor: SALMON }}>
+                    {w}
+                  </span>
+                ))}
+              </>
+            )}
+          </div>
+
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setStep(1)} className="rounded-full gap-2">← Back</Button>
+            <Button
+              onClick={() => setStep(3)}
+              disabled={selectedWords.size === 0}
+              className="rounded-full px-8 text-white gap-2 shadow-md"
+              style={{ backgroundColor: TEAL }}
+            >
+              Now shrink it →
+            </Button>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── Step 3: Shrink It ── */}
+      {step === 3 && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">✍️</span>
+            <h3 className="font-display font-bold text-lg" style={{ color: NAVY }}>Step 3: Shrink It!</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-5">
+            Use your keywords to write the <strong>main idea</strong> in <strong>10 words or less</strong>.
+          </p>
+
+
+          {/* Keywords reminder */}
+          <div className="rounded-xl p-4 mb-5 flex flex-wrap gap-2 items-center" style={{ background: "#FFF3E0", border: `1px solid ${AMBER}50` }}>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mr-1">Your Keywords:</span>
+            {[...selectedWords].map(w => (
+              <span key={w} className="px-3 py-1 rounded-full text-white text-sm font-semibold" style={{ backgroundColor: SALMON }}>
+                {w}
+              </span>
+            ))}
+          </div>
+
+
+          {/* Main idea input */}
+          <div className="space-y-2 mb-6">
+            <Textarea
+              value={mainIdea}
+              onChange={e => setMainIdea(e.target.value)}
+              placeholder="Write the main idea here…"
+              className="rounded-xl resize-none border-2 transition-colors"
+              rows={3}
+              style={{
+                fontSize: "1.1rem",
+                lineHeight: "1.8",
+                fontFamily: "'Lexend', sans-serif",
+                borderColor: overLimit ? "#EF4444" : TEAL,
+                color: NAVY,
+              }}
+            />
+            {/* Live word counter */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Use your keywords to write ONE clear sentence.</p>
+              <div
+                className="text-sm font-bold px-3 py-1 rounded-full transition-all"
+                style={{
+                  backgroundColor: overLimit ? "#FEE2E2" : ideaWordCount > 7 ? "#FEF3C7" : "#F0FDFA",
+                  color: overLimit ? "#DC2626" : ideaWordCount > 7 ? "#D97706" : TEAL,
+                }}
+              >
+                {ideaWordCount} / {MAX_WORDS} words
+              </div>
+            </div>
+            {overLimit && (
+              <p className="text-xs font-semibold text-red-500">Too many words! Try to make it shorter.</p>
+            )}
+          </div>
+
+
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={() => setStep(2)} className="rounded-full gap-2">← Back</Button>
+            <Button
+              onClick={() => setStep(4)}
+              disabled={!mainIdea.trim() || overLimit}
+              className="rounded-full px-8 text-white gap-2 shadow-md"
+              style={{ backgroundColor: NAVY }}
+            >
+              <CheckCircle2 className="w-4 h-4" /> Submit
+            </Button>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── Step 4: Done! ── */}
+      {step === 4 && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-3">🌴</div>
+            <h3 className="font-display font-bold text-2xl mb-1" style={{ color: TEAL }}>Amazing Work!</h3>
+            <p className="text-sm text-muted-foreground">You shrunk the paragraph into a main idea sentence.</p>
+          </div>
+
+
+          {/* Summary card */}
+          <div className="rounded-2xl p-5 mb-6 space-y-4" style={{ background: "#F0FDFA", border: `2px solid ${TEAL}40` }}>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: TEAL }}>📌 Original Paragraph</p>
+              <p className="text-sm leading-relaxed text-foreground" style={{ fontFamily: "'Lexend', sans-serif" }}>{passage.text}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: SALMON }}>🔑 Your Keywords</p>
+              <div className="flex flex-wrap gap-2">
+                {[...selectedWords].map(w => (
+                  <span key={w} className="px-3 py-1 rounded-full text-white text-sm font-semibold" style={{ backgroundColor: SALMON }}>{w}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: NAVY }}>💡 Your Main Idea</p>
+              <p
+                className="text-lg font-bold rounded-xl px-4 py-3"
+                style={{ color: NAVY, background: `${AMBER}20`, border: `2px solid ${AMBER}60`, fontFamily: "'Lexend', sans-serif" }}
+              >
+                "{mainIdea}"
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">{ideaWordCount} word{ideaWordCount !== 1 ? "s" : ""}</p>
+            </div>
+          </div>
+
+
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Button
+              onClick={handleSave}
+              disabled={saving || saved}
+              className="rounded-full gap-2 text-white shadow-md px-6"
+              style={{ backgroundColor: saved ? LIME : "#D6006E" }}
+            >
+              <BookmarkPlus className="w-4 h-4" />
+              {saving ? "Saving…" : saved ? "Saved! ✅" : "Add to Skill Builders"}
+            </Button>
+            <Button onClick={handleReset} variant="outline" className="rounded-full gap-2 px-6">
+              <RefreshCw className="w-4 h-4" /> Try Another
+            </Button>
+          </div>
+        </div>
+      )}
+
+
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;700&display=swap');`}</style>
+    </div>
+  );
+}
+
