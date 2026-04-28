@@ -1,0 +1,127 @@
+FluencyPassageGenerator.jsx 
+
+import React, { useState } from 'react';
+import { BookOpen, RotateCcw, CheckCircle, AlertCircle } from 'lucide-react';
+
+const FluencyPassageGenerator = () => {
+  const [passage, setPassage] = useState("");
+  const [grade, setGrade] = useState("1");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [missedWords, setMissedWords] = useState(new Set());
+
+  // Mock AI Generation - replace with your actual AI hook/call
+  const generatePassage = () => {
+    setIsGenerating(true);
+    // Simulate AI response based on grade level
+    setTimeout(() => {
+      const mockPassage = "The cat sat on a mat. It was a very fat cat. The mat was blue and soft.";
+      setPassage(mockPassage);
+      setMissedWords(new Set());
+      setIsGenerating(false);
+    }, 1000);
+  };
+
+  const toggleWordError = (index) => {
+    const newMissed = new Set(missedWords);
+    if (newMissed.has(index)) {
+      newMissed.delete(index);
+    } else {
+      newMissed.add(index);
+    }
+    setMissedWords(newMissed);
+  };
+
+  const words = passage.split(" ");
+  const accuracy = words.length > 0 
+    ? Math.round(((words.length - missedWords.size) / words.length) * 100) 
+    : 100;
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-newton-pink flex items-center gap-2">
+          <BookOpen className="w-6 h-6" /> Fluency Passage Generator
+        </h2>
+        
+        <div className="flex gap-4 items-center">
+          <select 
+            value={grade} 
+            onChange={(e) => setGrade(e.target.value)}
+            className="p-2 border rounded-lg bg-slate-50"
+          >
+            {[1, 2, 3, 4, 5].map(g => <option key={g} value={g}>Grade {g}</option>)}
+          </select>
+          <button 
+            onClick={generatePassage}
+            disabled={isGenerating}
+            className="bg-newton-purple text-white px-4 py-2 rounded-lg hover:opacity-90 transition-all"
+          >
+            {isGenerating ? "Creating..." : "Generate Passage"}
+          </button>
+        </div>
+      </div>
+
+      {passage ? (
+        <div className="space-y-6">
+          {/* Stats Bar */}
+          <div className="flex gap-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase font-bold">Total Words</p>
+              <p className="text-xl font-display">{words.length}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase font-bold">Errors</p>
+              <p className="text-xl font-display text-red-500">{missedWords.size}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-slate-500 uppercase font-bold">Accuracy</p>
+              <p className={`text-xl font-display ${accuracy > 90 ? 'text-green-500' : 'text-orange-500'}`}>
+                {accuracy}%
+              </p>
+            </div>
+          </div>
+
+          {/* Interactive Passage */}
+          <div className="p-8 bg-white border-2 border-dashed border-slate-200 rounded-2xl">
+            <p className="text-slate-400 text-sm mb-4 italic">Teacher Tip: Click a word to mark it as an error.</p>
+            <div className="flex flex-wrap gap-x-2 gap-y-3 leading-relaxed">
+              {words.map((word, index) => (
+                <button
+                  key={index}
+                  onClick={() => toggleWordError(index)}
+                  className={`text-2xl px-1 rounded transition-colors ${
+                    missedWords.has(index) 
+                      ? "bg-red-100 text-red-600 line-through decoration-2" 
+                      : "hover:bg-slate-100 text-slate-800"
+                  }`}
+                >
+                  {word}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <button 
+              onClick={() => setMissedWords(new Set())}
+              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+            >
+              <RotateCcw className="w-4 h-4" /> Reset Marks
+            </button>
+            <button className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+              <CheckCircle className="w-4 h-4" /> Save Result
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-2xl">
+          <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+          <p className="text-slate-500">Select a grade and click generate to start the session.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default FluencyPassageGenerator;
+
