@@ -1,0 +1,292 @@
+import { useState, useEffect } from "react";
+import { Heart, Sparkles, RefreshCw, BookmarkPlus, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+const GRADES = ["Pre-K", "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
+
+const SEL_SUGGESTIONS = [
+  { label: "🚶 Walking in the Hallway", topic: "Walking quietly in the hallway with my class" },
+  { label: "🎮 When a Game is Over", topic: "Managing feelings when a game or activity ends" },
+  { label: "🙋 Asking a Friend to Play", topic: "How to ask a friend if I can play with them" },
+];
+
+export default function SocialStoryCreator() {
+  const [grade, setGrade] = useState("Grade 2");
+  const [literacyGoal, setLiteracyGoal] = useState("");
+  const [story, setStory] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  function handleSuggestion(suggestion) {
+    setLiteracyGoal(suggestion.topic);
+    handleGenerate(suggestion.topic);
+  }
+
+  async function handleGenerate(overrideTopic) {
+    setGenerating(true);
+    setStory(null);
+
+    const activeTopic = overrideTopic !== undefined ? overrideTopic : literacyGoal;
+
+    const prompt = `You are a Social Story writer trained in Carol Gray's evidence-based Narrative Social Story method for neurodiverse and neurotypical elementary school students.
+
+Write a first-person Narrative Social Story for a ${grade} student about: "${activeTopic || "managing big feelings and asking for help"}"
+
+Story structure — use EXACTLY this sentence-type pattern across 4–5 paragraphs:
+- Paragraph 1 (Descriptive): Set the scene. Describe WHERE this happens and WHO is usually there. No judgments. (e.g., "Sometimes I go to the cafeteria with my class. There are lots of students and it can be noisy.")
+- Paragraph 2 (Perspective): Describe how OTHERS around the student might feel or think. (e.g., "My teacher and my friends want everyone to feel comfortable.")
+- Paragraph 3 (Directive/Affirming): Positive "I can" statement. What the student CAN do. (e.g., "I can take three deep breaths. I can ask a grown-up for a break.")
+- Paragraph 4 (Affirming): Celebrate the student. Remind them they are capable and supported. (e.g., "I am doing my best every day. The adults around me are proud of me.")
+- Paragraph 5 (optional, Descriptive/Closing): Wrap up the situation with a positive, calming close.
+
+Rules:
+- Grade-appropriate vocabulary for ${grade}
+- No negative framing (never say what a student "should not" do — only what they CAN do)
+- Each paragraph: 2–4 sentences, short and concrete
+- Use "I" and "my" throughout
+
+Format rules (STRICTLY follow these):
+1. First line: TITLE: [Story Title]
+2. Then 4–5 paragraphs separated by a blank line
+3. After paragraphs, add: REFLECTION QUESTIONS:
+4. List exactly 3 open-ended, affirming questions, each starting with a number (1. 2. 3.)
+
+Return only the story text — no labels like "Paragraph 1", no extra commentary.`;
+
+    const result = await base44.integrations.Core.InvokeLLM({ prompt });
+    setStory(typeof result === "string" ? result : result?.content || "");
+    setGenerating(false);
+  }
+
+  async function handleSaveToActivities() {
+    if (!story) return;
+    setSaving(true);
+    const titleMatch = story.match(/TITLE:\s*(.+)/i);
+    const title = titleMatch ? titleMatch[1].trim() : `${grade} Social Story`;
+    await base44.entities.Activity.create({
+      title,
+      type: "Lesson",
+      grade,
+      subject: "ELA",
+      content: story,
+      source_tool: "Social Story Creator",
+    });
+    setSaving(false);
+    toast.success("Success! This resource is now available in your Skill Builders library.");
+  }
+
+  function renderSELStory(text) {
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+    const titleLine = lines.find(l => /^TITLE:/i.test(l));
+    const title = titleLine ? titleLine.replace(/^TITLE:\s*/i, "") : "";
+
+    const reflIdx = lines.findIndex(l => /^REFLECTION QUESTIONS/i.test(l));
+    const rawParagraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p && !/^TITLE:/i.test(p) && !/^REFLECTION/i.test(p));
+    const reflLines = reflIdx > -1 ? lines.slice(reflIdx + 1).filter(l => /^\d\./.test(l)) : [];
+
+    return (
+      <div className="space-y-1">
+        {title && (
+          <h2 className="font-bold text-newton-pink text-xl mb-4 text-center">{title}</h2>
+        )}
+        {rawParagraphs.map((para, i) => (
+          <div key={i} className="mb-6">
+            <div 
+              className="w-full border-2 border-dashed border-border/60 rounded-xl mb-3 bg-secondary/20"
+              style={{ minHeight: "150px" }}
+            >
+              {/* Box intentionally left empty for student drawing */}
+            </div>
+            <p className="text-sm leading-relaxed text-foreground">{para}</p>
+          </div>
+        ))}
+        {reflLines.length > 0 && (
+          <div className="mt-6 p-4 bg-newton-pink/5 rounded-xl border border-newton-pink/20">
+            <h3 className="font-bold text-newton-pink text-sm mb-3">💬 Reflection Questions</h3>
+            <ol className="space-y-2">
+              {reflLines.map((q, i) => (
+                <li key={i} className="text-sm text-foreground">{q}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Config Card */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-newton-orange flex items-center justify-center">
+            <Heart className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl text-newton-orange">Social Story Creator</h2>
+            <p className="text-sm text-muted-foreground">Carol Gray's evidence-based narratives for social-emotional learning</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+          {/* Grade */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Grade Level</Label>
+            <Select value={grade} onValueChange={setGrade}>
+              <SelectTrigger className="rounded-xl border-border/60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GRADES.map((g) => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* SEL Focus */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">SEL Focus / Situation</Label>
+            <Input
+              placeholder="e.g. Managing anger, sharing, asking for help"
+              value={literacyGoal}
+              onChange={(e) => setLiteracyGoal(e.target.value)}
+              className="rounded-xl border-border/60"
+            />
+          </div>
+        </div>
+
+        {/* Generate Button */}
+        <div className="flex justify-end gap-3">
+          {story && (
+            <Button
+              onClick={() => { setStory(null); handleGenerate(); }}
+              variant="outline"
+              className="rounded-full border-newton-orange/40 text-newton-orange hover:bg-newton-orange/10 gap-2"
+            >
+              <RefreshCw className="w-4 h-4" /> Regenerate
+            </Button>
+          )}
+          <Button
+            onClick={() => handleGenerate()}
+            disabled={generating}
+            className="rounded-full bg-newton-orange hover:bg-newton-orange/90 text-white shadow-md shadow-newton-orange/30 px-6 gap-2"
+          >
+            {generating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Writing Story...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate Story
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Axo's Quick Starts */}
+        <div className="mt-4 pt-4 border-t border-border/40">
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">🦖 Quick Starts</p>
+          <div className="flex flex-wrap gap-2">
+            {SEL_SUGGESTIONS.map((s) => (
+              <button
+                key={s.label}
+                onClick={() => handleSuggestion(s)}
+                disabled={generating}
+                className="text-sm px-3 py-1.5 rounded-full border-2 border-newton-orange/40 text-newton-orange bg-newton-orange/5 hover:bg-newton-orange/15 hover:border-newton-orange font-medium transition-all disabled:opacity-40"
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Empty State */}
+      {!story && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-newton-orange/10 flex items-center justify-center mb-4">
+            <Heart className="w-8 h-8 text-newton-orange" />
+          </div>
+          <h3 className="font-display font-semibold text-lg mb-2">Create a Social Story</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Choose a grade level and enter an SEL focus to generate a first-person Social Story with drawing boxes and reflection questions.
+          </p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {generating && (
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-border/50 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-newton-orange/20 border-t-newton-orange rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Writing your social story… this takes about 10 seconds.</p>
+        </div>
+      )}
+
+      {/* Story Canvas */}
+      {story && !generating && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{grade}</span> ·
+              <span className="px-2 py-0.5 rounded-full bg-newton-orange/20 text-newton-orange text-xs font-semibold">Social Story</span>
+            </div>
+            <div className="flex gap-2 flex-wrap no-print">
+              <Button
+                onClick={handleSaveToActivities}
+                disabled={saving}
+                className="rounded-full bg-newton-orange hover:bg-newton-orange/90 text-white gap-2 shadow-md shadow-newton-orange/25"
+              >
+                <BookmarkPlus className="w-4 h-4" />
+                {saving ? "Saving..." : "Add to Skill Builders"}
+              </Button>
+              <Button
+                onClick={() => window.print()}
+                variant="outline"
+                className="rounded-full gap-2 border-newton-orange/60 text-newton-orange hover:bg-newton-orange/10"
+              >
+                <Printer className="w-4 h-4" /> Print Story
+              </Button>
+            </div>
+          </div>
+
+          <div className="story-print-root bg-white rounded-2xl p-8 shadow-sm border border-border/50">
+            <div className="max-w-2xl mx-auto font-mono leading-relaxed">
+              {renderSELStory(story)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .story-print-root, .story-print-root * { visibility: visible; }
+          .story-print-root {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            font-family: Georgia, serif;
+            line-height: 2 !important;
+          }
+          .no-print { display: none !important; }
+          nav, header, aside, footer, button { display: none !important; }
+          @page { margin: 0.75in; size: letter; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
