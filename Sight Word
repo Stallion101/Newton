@@ -1,0 +1,175 @@
+import React, { useState } from "react";
+import { Save, Printer, CheckCircle, ChevronRight, Wand2, Type } from "lucide-react";
+
+const WORD_LISTS = {
+  Fry: {
+    "Grade 1": ["the", "of", "and", "a", "to", "in", "is", "you", "that", "it"],
+    "Grade 2": ["over", "new", "sound", "take", "only", "little", "work", "know", "place", "years"]
+  },
+  Dolch: {
+    "Pre-K": ["a", "and", "away", "big", "blue", "can", "come", "down", "find", "for"],
+    "Kindergarten": ["all", "am", "are", "at", "ate", "be", "black", "brown", "but", "came"]
+  }
+};
+
+export default function SightWordLab() {
+  const [listType, setListType] = useState("Fry");
+  const [grade, setGrade] = useState("Grade 1");
+  const [selectedWords, setSelectedWords] = useState([]);
+  const [viewMode, setViewMode] = useState("generator"); // 'generator' or 'checker'
+
+  const toggleWord = (word) => {
+    setSelectedWords(prev => 
+      prev.includes(word) ? prev.filter(w => w !== word) : [...prev, word]
+    );
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-8">
+      <header className="flex justify-between items-center bg-slate-50 p-6 rounded-3xl border border-slate-100">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+            <Type className="text-newton-pink" /> Sight Word Lab 2.0
+          </h2>
+          <p className="text-slate-500 text-sm">Targeted mastery and traceable practice.</p>
+        </div>
+        <div className="flex bg-white rounded-2xl p-1 shadow-sm border">
+          <button 
+            onClick={() => setViewMode("generator")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${viewMode === "generator" ? "bg-newton-pink text-white" : "text-slate-400"}`}
+          >
+            Generator
+          </button>
+          <button 
+            onClick={() => setViewMode("checker")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${viewMode === "checker" ? "bg-newton-pink text-white" : "text-slate-400"}`}
+          >
+            Mastery Checker
+          </button>
+        </div>
+      </header>
+
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Settings Panel */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Parameters</h3>
+          
+          <div>
+            <label className="text-xs font-bold text-slate-600 block mb-2">Word List Source</label>
+            <select 
+              value={listType} 
+              onChange={(e) => setListType(e.target.value)}
+              className="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-newton-pink/20"
+            >
+              <option value="Fry">Fry High Frequency</option>
+              <option value="Dolch">Dolch List</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-600 block mb-2">Target Grade</label>
+            <select 
+              value={grade} 
+              onChange={(e) => setGrade(e.target.value)}
+              className="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-newton-pink/20"
+            >
+              {Object.keys(WORD_LISTS[listType]).map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Word Selection Box */}
+        <div className="md:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Suggested Word Bank</h3>
+          <div className="flex flex-wrap gap-2">
+            {WORD_LISTS[listType][grade].map(word => (
+              <button
+                key={word}
+                onClick={() => toggleWord(word)}
+                className={`px-4 py-2 rounded-full border text-sm font-bold transition-all ${
+                  selectedWords.includes(word) 
+                  ? "bg-newton-pink border-newton-pink text-white shadow-md scale-105" 
+                  : "bg-slate-50 border-slate-100 text-slate-600 hover:border-newton-pink/30"
+                }`}
+              >
+                {word}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Dynamic Content: Generator or Checker */}
+      {viewMode === "generator" ? (
+        <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-6">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-newton-pink" /> Worksheet Preview
+            </h3>
+            <button className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-xs font-bold transition-all">
+              <Printer className="w-4 h-4" /> Print Traceables
+            </button>
+          </div>
+          
+          <div className="grid gap-4">
+            {selectedWords.length > 0 ? selectedWords.map(word => (
+              <div key={word} className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+                <p className="text-xs text-newton-pink font-black uppercase mb-2">Trace & Write</p>
+                <p className="text-4xl font-display opacity-30 tracking-widest mb-4" style={{ borderBottom: '1px dashed rgba(255,255,255,0.2)' }}>
+                  {word} {word} {word}
+                </p>
+                <p className="text-sm italic text-slate-400 italic">
+                  Example: "The <span className="text-white font-bold">{word}</span> is big."
+                </p>
+              </div>
+            )) : (
+              <div className="text-center py-12 opacity-40">
+                <p>Select words above to generate practice sentences.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 p-8 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <CheckCircle className="text-green-500" /> Student Mastery Checklist
+          </h3>
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase">
+                <tr>
+                  <th className="px-6 py-4">Sight Word</th>
+                  <th className="px-6 py-4">Recognition</th>
+                  <th className="px-6 py-4">Last Checked</th>
+                  <th className="px-6 py-4">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {selectedWords.map(word => (
+                  <tr key={word} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-700">{word}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        <button className="p-1 hover:bg-green-100 rounded text-green-600">Known</button>
+                        <button className="p-1 hover:bg-red-100 rounded text-red-600">Needs Work</button>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-400">Apr 29, 2026</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-lg text-[10px] font-bold">IN PROGRESS</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button className="mt-6 w-full flex items-center justify-center gap-2 bg-slate-800 text-white p-4 rounded-2xl font-bold hover:bg-slate-900 transition-all">
+            <Save className="w-4 h-4" /> Save Data to Student Profile
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
