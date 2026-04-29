@@ -1,0 +1,208 @@
+import { useState, useEffect } from "react";
+import { ChevronDown, ChevronRight, User, Search, BookMarked } from "lucide-react";
+import { Link } from "react-router-dom";
+import { base44 } from "@/api/base44Client";
+
+
+const NAVY = "#1A2B3C";
+
+
+const GROUPS = [
+  {
+    label: "Skill Builders",
+    emoji: "🎓",
+    badge: "🎓",
+    // Cleaned: Removed 'progress' (Fluency), 'sightword', and 'decodable'
+    ids: [
+      "parashrink",
+      "touchpoint",
+      "visualvocal",
+      "worksheet",
+      "sightwordchecker",
+      "elkonin",
+      "syllable",
+      "vocabulary",
+      "cloze",
+      "summary",
+      "organizer",
+      "inference",
+      "mentalmovie",
+      "signalword",
+      "socialstory",
+      "drama"
+    ],
+  },
+  {
+    label: "Instructional Design",
+    emoji: "📐",
+    badge: "📐",
+    ids: ["intervention"],
+  },
+  {
+    label: "CBM Probes",
+    emoji: "📈",
+    badge: "📈",
+    ids: ["cbm"],
+  },
+  {
+    label: "Support & Regulation",
+    emoji: "🧘",
+    badge: "🧘",
+    ids: ["aba"],
+  },
+  {
+    label: "Teacher Workspace",
+    emoji: "📝",
+    badge: "📝",
+    // Cleaned: Removed 'iep' and 'iepnarrative'
+    ids: ["communication"],
+  },
+];
+
+
+export default function ToolSidebar({ tools, activeTab, onSelect, visited, searchQuery, onSearchChange }) {
+  const [openGroups, setOpenGroups] = useState(new Set(["Skill Builders", "Instructional Design", "CBM Probes", "Support & Regulation", "Teacher Workspace"]));
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState(() => localStorage.getItem("quick_select_student") || "");
+
+
+  useEffect(() => {
+    base44.entities.Student.list().then(setStudents).catch(() => {});
+  }, []);
+
+
+  function toggleGroup(label) {
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  }
+
+
+  function handleStudentChange(e) {
+    const name = e.target.value;
+    setSelectedStudent(name);
+    if (name) {
+      const student = students.find(s => s.name === name);
+      localStorage.setItem("quick_select_student", name);
+      if (student) localStorage.setItem("quick_select_interest", student.math_domain || "");
+    } else {
+      localStorage.removeItem("quick_select_student");
+      localStorage.removeItem("quick_select_interest");
+    }
+  }
+
+
+  const toolMap = Object.fromEntries(tools.map(t => [t.id, t]));
+
+
+  // Filter tools by search
+  const query = (searchQuery || "").toLowerCase();
+  function matchesSearch(tool) {
+    if (!query) return true;
+    return tool.label.toLowerCase().includes(query);
+  }
+
+
+  return (
+    <aside className="w-full md:w-56 shrink-0 bg-white rounded-2xl border border-border/40 p-3 flex flex-col gap-3"
+      style={{ boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}>
+
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <input
+          value={searchQuery || ""}
+          onChange={e => onSearchChange?.(e.target.value)}
+          placeholder="Quick search…"
+          className="w-full text-xs rounded-lg border border-border/60 bg-secondary/20 pl-7 pr-2 py-1.5 focus:outline-none focus:ring-1"
+          style={{ fontFamily: "var(--font-inter)" }}
+        />
+      </div>
+
+
+      {/* Student Quick-Select */}
+      <div className="space-y-1.5">
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <User className="w-3 h-3" /> Student
+        </label>
+        <select
+          value={selectedStudent}
+          onChange={handleStudentChange}
+          className="w-full text-xs rounded-lg border border-border/60 bg-secondary/30 px-2 py-1.5 focus:outline-none focus:ring-1"
+          style={{ fontFamily: "var(--font-inter)" }}
+        >
+          <option value="">— Select Student —</option>
+          {students.map(s => (
+            <option key={s.id} value={s.name}>{s.name}</option>
+          ))}
+        </select>
+        {selectedStudent && (
+          <p className="text-xs text-muted-foreground px-1">Pre-filling for <strong>{selectedStudent}</strong></p>
+        )}
+      </div>
+
+
+      {/* Library quick-link */}
+      <Link
+        to="/library"
+        className="flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold transition-all duration-150 hover:opacity-90"
+        style={{ background: "#D81B60", color: "white", textDecoration: "none", borderRadius: "12px", border: "0.5px solid rgba(255,255,255,0.6)", boxShadow: "0 2px 10px #D81B6040" }}
+      >
+        <BookMarked className="w-4 h-4 shrink-0" />
+        <span className="flex-1 text-xs">📚 Skill Builders Library</span>
+      </Link>
+
+
+      <div className="h-px bg-border/40" />
+
+
+      {/* Grouped Tool Links */}
+      <div className="flex flex-col gap-1">
+        {GROUPS.map(group => {
+          const groupTools = group.ids.map(id => toolMap[id]).filter(t => t && matchesSearch(t));
+          if (groupTools.length === 0) return null;
+          const isOpen = openGroups.has(group.label) || !!query;
+          return (
+            <div key={group.label}>
+              <button
+                onClick={() => toggleGroup(group.label)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+              >
+                <span>{group.emoji}</span>
+                <span className="flex-1 text-left">{group.label}</span>
+                {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              </button>
+              {isOpen && (
+                <div className="flex flex-col gap-0.5 ml-2 mt-0.5">
+                  {groupTools.map(tool => {
+                    const Icon = tool.icon;
+                    const isActive = activeTab === tool.id;
+                    const isUnvisited = tool.isNew && !visited.has(tool.id);
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => onSelect(tool.id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 text-left ${
+                          isActive ? "text-white shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                        }`}
+                        style={isActive ? { backgroundColor: NAVY } : {}}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="flex-1 truncate text-xs">{tool.label}</span>
+                        {isUnvisited && <span className="w-1.5 h-1.5 rounded-full bg-newton-pink shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
