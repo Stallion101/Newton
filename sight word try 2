@@ -1,0 +1,130 @@
+import React, { useState } from "react";
+import { Save, Printer, CheckCircle, Wand2, Type, RotateCcw, Plus, Edit3 } from "lucide-react";
+
+// Expanded Word Lists
+const WORD_LISTS = {
+  Fry: {
+    "Grade 1": ["the", "of", "and", "a", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on", "are", "as", "with", "his", "they", "I"],
+    "Grade 2": ["over", "new", "sound", "take", "only", "little", "work", "know", "place", "years", "live", "me", "back", "give", "most", "very", "after", "things", "our", "just"]
+  },
+  Dolch: {
+    "Pre-K": ["a", "and", "away", "big", "blue", "can", "come", "down", "find", "for", "funny", "go", "help", "here", "I", "in", "is", "it", "jump", "little"],
+    "Kindergarten": ["all", "am", "are", "at", "ate", "be", "black", "brown", "but", "came", "did", "do", "eat", "four", "get", "good", "have", "he", "into", "like"]
+  }
+};
+
+// Smart defaults so it doesn't sound like complete nonsense
+const getDefaultSentence = (word) => {
+  const w = word.toLowerCase();
+  if (w === "new") return "I like my new shoes.";
+  if (w === "and") return "The cat and dog play.";
+  if (w === "the") return "Look at the big sun.";
+  if (w === "of") return "Have a piece of cake.";
+  if (w === "to") return "We go to the park.";
+  return `Let's write the word ${word} today.`; // Generic fallback
+};
+
+export default function SightWordLab() {
+  const [listType, setListType] = useState("Fry");
+  const [grade, setGrade] = useState("Grade 1");
+  const [selectedWords, setSelectedWords] = useState([]);
+  const [customWordInput, setCustomWordInput] = useState("");
+  const [sentences, setSentences] = useState({}); // Stores user-edited sentences
+  const [viewMode, setViewMode] = useState("generator"); 
+
+  const toggleWord = (word) => {
+    setSelectedWords(prev => {
+      const isSelected = prev.includes(word);
+      if (!isSelected) {
+        // Initialize with a default sentence when added
+        setSentences(s => ({ ...s, [word]: getDefaultSentence(word) }));
+        return [...prev, word];
+      } else {
+        return prev.filter(w => w !== word);
+      }
+    });
+  };
+
+  const handleAddCustomWord = (e) => {
+    e.preventDefault();
+    const word = customWordInput.trim().toLowerCase();
+    if (word && !selectedWords.includes(word)) {
+      setSelectedWords(prev => [...prev, word]);
+      setSentences(s => ({ ...s, [word]: getDefaultSentence(word) }));
+      setCustomWordInput("");
+    }
+  };
+
+  const handleSentenceChange = (word, newSentence) => {
+    setSentences(prev => ({ ...prev, [word]: newSentence }));
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 p-6 rounded-3xl border border-slate-100 gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+            <Type className="text-pink-500" /> Sight Word Lab
+          </h2>
+          <p className="text-slate-500 text-sm font-medium">Rebuilt Mastery & Practice Suite</p>
+        </div>
+        <div className="flex bg-white rounded-2xl p-1 shadow-sm border self-stretch md:self-auto">
+          <button 
+            onClick={() => setViewMode("generator")}
+            className={`flex-1 md:flex-none px-4 py-2 rounded-xl text-xs font-bold transition-all ${viewMode === "generator" ? "bg-pink-500 text-white" : "text-slate-400"}`}
+          >
+            Generator
+          </button>
+          <button 
+            onClick={() => setViewMode("checker")}
+            className={`flex-1 md:flex-none px-4 py-2 rounded-xl text-xs font-bold transition-all ${viewMode === "checker" ? "bg-pink-500 text-white" : "text-slate-400"}`}
+          >
+            Mastery Checker
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Settings & Custom Words */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Configuration</h3>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600">List Source</label>
+              <select 
+                value={listType} 
+                onChange={(e) => {
+                  setListType(e.target.value);
+                  setGrade(Object.keys(WORD_LISTS[e.target.value])[0]);
+                }}
+                className="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-semibold focus:ring-2 focus:ring-pink-500/20"
+              >
+                <option value="Fry">Fry High Frequency</option>
+                <option value="Dolch">Dolch List</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600">Level</label>
+              <select value={grade} onChange={(e) => setGrade(e.target.value)} className="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-semibold focus:ring-2 focus:ring-pink-500/20">
+                {Object.keys(WORD_LISTS[listType]).map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 space-y-3">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Add Custom Word</h3>
+            <form onSubmit={handleAddCustomWord} className="flex gap-2">
+              <input 
+                type="text" 
+                value={customWordInput}
+                onChange={(e) => setCustomWordInput(e.target.value)}
+                placeholder="Type word..." 
+                className="w-full p-2.5 bg-slate-50 border-none rounded-xl text-sm font-semibold focus:ring-2 focus:ring-pink-500/20"
+              />
+              <button type="submit" className="bg-slate-800 text-white p-2.5 rounded-xl hover:bg-slate-900 transition-colors">
+                <Plus className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+
+          <button onClick={() => setSelectedWords([])} className="w-full flex items-center justify-center gap-2 text-xs font-bold text-slate-400 hover:text-pink-500 pt-2 border-t border-slate-10
