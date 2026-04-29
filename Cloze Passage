@@ -1,0 +1,174 @@
+import { useState } from "react";
+import { Sparkles, RefreshCw, BookmarkPlus, Printer, Edit3, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+const NAVY = "#1A2B3C";
+const SAGE = "#76B5B3";
+const GRADES = ["Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
+
+export default function ClozePassageGenerator() {
+  const [grade, setGrade] = useState("Grade 5");
+  const [theme, setTheme] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [passage, setPassage] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [answers, setAnswers] = useState({});
+
+  async function handleGenerate() {
+    if (!theme.trim()) { toast.error("Please enter a theme."); return; }
+    setGenerating(true);
+    setPassage(null);
+    setAnswers({});
+    setIsEditing(false);
+
+    const prompt = `Create a cohesive Grade ${grade} Cloze reading passage (approx. 150 words) about "${theme}".
+    
+    STRICT RULES FOR DISTRACTORS:
+    1. PHONETIC TRAP: Must be a REAL dictionary word that is a homophone or sounds similar (e.g., 'cite' vs 'site', 'passed' vs 'past'). 
+    2. NO SYMBOLS: Do NOT use IPA brackets [], phonetic symbols, or non-English characters. 
+    3. SEMANTIC DISTRACTOR: Must be a real word in the same category but contextually wrong.
+    4. LENGTH: Ensure the story flows naturally with 5-6 total blanks.
+
+    JSON SCHEMA:
+    {
+      "title": "Title",
+      "items": [
+        {
+          "before": "Text before blank ",
+          "correct": "word",
+          "after": " text after blank.",
+          "phonetic": "real_homophone_word",
+          "semantic": "wrong_category_word"
+        }
+      ]
+    }`;
+
+    try {
+      const res = await base44.integrations.Core.InvokeLLM({
+        prompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  before: { type: "string" },
+                  after: { type: "string" },
+                  correct: { type: "string" },
+                  phonetic: { type: "string" },
+                  semantic: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      });
+      setPassage(res);
+    } catch (e) {
+      toast.error("Generation failed. Try again.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const updateItem = (idx, key, val) => {
+    const next = [...passage.items];
+    next[idx][key] = val;
+    setPassage({ ...passage, items: next });
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto p-4">
+      {/* Search Header */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border">
+        <h2 className="text-xl font-bold mb-4" style={{ color: NAVY }}>The Meaning Thief</h2>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="space-y-2">
+            <Label>Grade Level</Label>
+            <Select value={grade} onValueChange={setGrade}>
+              <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+              <SelectContent>{GRADES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Theme</Label>
+            <Input value={theme} onChange={e => setTheme(e.target.value)} placeholder="e.g. Ocean Life" className="rounded-xl" />
+          </div>
+        </div>
+        <Button onClick={handleGenerate} disabled={generating} className="w-full text-white rounded-xl" style={{ backgroundColor: NAVY }}>
+          {generating ? "Cleaning phonetic traps..." : "Generate Cloze Passage"}
+        </Button>
+      </div>
+
+      {passage && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold" style={{ color: NAVY }}>{passage.title}</h3>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(!isEditing)} className="rounded-full">
+                {isEditing ? <><Check className="w-4 h-4 mr-1" /> Finish Editing</> : <><Edit3 className="w-4 h-4 mr-1" /> Edit Passage</>}
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 border shadow-sm" style={{ fontFamily: "'Comic Neue', cursive", fontSize: "1.15rem", lineHeight: "2.6" }}>
+            {passage.items.map((item, idx) => (
+              <span key={idx}>
+                {isEditing ? (
+                  <div className="inline-flex flex-col border-2 border-blue-100 p-2 rounded-lg bg-blue-50/20 mx-1 align-top mb-2">
+                    <textarea className="text-xs p-1 w-full bg-transparent border-b mb-1" value={item.before} onChange={e => updateItem(idx, 'before', e.target.value)} />
+                    <div className="flex gap-1">
+                       <input className="font-bold border px-1 text-center bg-white text-sm" value={item.correct} onChange={e => updateItem(idx, 'correct', e.target.value)} placeholder="Correct" />
+                       <input className="text-xs border px-1 text-center bg-white" value={item.phonetic} onChange={e => updateItem(idx, 'phonetic', e.target.value)} placeholder="Phonetic" />
+                       <input className="text-xs border px-1 text-center bg-white" value={item.semantic} onChange={e => updateItem(idx, 'semantic', e.target.value)} placeholder="Semantic" />
+                    </div>
+                    <textarea className="text-xs p-1 w-full bg-transparent border-t mt-1" value={item.after} onChange={e => updateItem(idx, 'after', e.target.value)} />
+                  </div>
+                ) : (
+                  <Segment item={item} idx={idx} answered={answers[idx]} onAnswer={val => setAnswers({...answers, [idx]: val})} />
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Segment({ item, idx, answered, onAnswer }) {
+  const choices = [
+    { word: item.correct, type: 'correct' },
+    { word: item.phonetic, type: 'phonetic' },
+    { word: item.semantic, type: 'semantic' }
+  ].sort((a, b) => a.word.localeCompare(b.word));
+
+  return (
+    <>
+      <span className="whitespace-pre-wrap">{item.before}</span>
+      {answered ? (
+        <span className={`px-3 py-1 rounded-lg font-bold text-white mx-1 ${answered === item.correct ? 'bg-teal-500' : 'bg-red-500'}`}>
+          {answered}
+        </span>
+      ) : (
+        <span className="inline-flex gap-1 mx-1 align-middle">
+          {choices.map(c => (
+            <button key={c.word} onClick={() => onAnswer(c.word)} className="text-sm px-2.5 py-1 border-2 rounded-lg hover:border-blue-400 bg-white transition-all">
+              {c.word}
+            </button>
+          ))}
+        </span>
+      )}
+      <span className="whitespace-pre-wrap">{item.after}</span>
+    </>
+  );
+}
+
