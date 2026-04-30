@@ -1,0 +1,137 @@
+import React, { useState, useEffect } from 'react';
+import { Save, Printer, BookOpen } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+
+// FULL WORD BANK
+const WORD_BANKS = {
+  Fry: {
+    Kindergarten: ["the", "of", "and", "a", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on", "are", "as", "with", "his", "they", "I", "at", "be", "this", "have", "from"],
+    "Grade 1": ["or", "one", "had", "by", "word", "but", "not", "what", "all", "were", "we", "when", "your", "can", "said", "there", "use", "an", "each", "which", "she", "do", "how", "their", "if"],
+    "Grade 2": ["will", "up", "other", "about", "out", "many", "then", "them", "these", "so", "some", "her", "would", "make", "like", "him", "into", "time", "has", "look", "two", "more", "write", "go", "see"],
+    "Grade 3": ["number", "no", "way", "could", "people", "my", "than", "first", "water", "been", "called", "who", "oil", "sit", "now", "find", "long", "down", "day", "did", "get", "come", "made", "may", "part"]
+  },
+  Dolch: {
+    Kindergarten: ["all", "am", "are", "at", "ate", "be", "black", "brown", "but", "came", "did", "do", "eat", "four", "get", "good", "have", "he", "into", "like", "must", "new", "no", "now", "on"],
+    "Grade 1": ["after", "again", "an", "any", "as", "ask", "by", "could", "every", "fly", "from", "give", "going", "had", "has", "her", "him", "his", "how", "just", "know", "let", "live", "may", "of"],
+    "Grade 2": ["always", "around", "because", "been", "before", "best", "both", "buy", "call", "cold", "does", "don't", "fast", "first", "five", "found", "gave", "goes", "green", "its", "made", "many", "off", "or", "pull"],
+    "Grade 3": ["about", "better", "bring", "carry", "clean", "done", "draw", "drink", "eight", "fall", "far", "full", "got", "grow", "hold", "hot", "hurt", "if", "keep", "kind", "laugh", "light", "never", "only", "own"]
+  }
+};
+
+export default function SightWordLab() {
+  const [listSource, setListSource] = useState("Fry");
+  const [level, setLevel] = useState("Grade 1");
+  const [selectedWords, setSelectedWords] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState("");
+
+  // Connect to the Student Roster accurately
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('newton_students');
+      if (saved) setStudents(JSON.parse(saved));
+    } catch (e) {
+      console.error("Failed to load students", e);
+    }
+  }, []);
+
+  const toggleWord = (word) => {
+    setSelectedWords(prev => 
+      prev.includes(word) ? prev.filter(w => w !== word) : [...prev, word]
+    );
+  };
+
+  const handlePrint = () => {
+    if (selectedWords.length === 0) return toast.error("Select words first!");
+    window.print();
+  };
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      {/* Settings Panel */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:hidden bg-white p-4 rounded-lg border">
+        <div className="space-y-1">
+          <label className="text-xs font-bold uppercase text-slate-500">Connect Student</label>
+          <Select onValueChange={setSelectedStudent} value={selectedStudent}>
+            <SelectTrigger><SelectValue placeholder="Choose Student" /></SelectTrigger>
+            <SelectContent>
+              {students.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold uppercase text-slate-500">Source</label>
+          <Select value={listSource} onValueChange={setListSource}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Fry">Fry</SelectItem>
+              <SelectItem value="Dolch">Dolch</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold uppercase text-slate-500">Level</label>
+          <Select value={level} onValueChange={setLevel}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.keys(WORD_BANKS[listSource]).map(g => (
+                <SelectItem key={g} value={g}>{g}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end gap-2">
+          <Button onClick={handlePrint} className="w-full bg-indigo-600"><Printer className="h-4 w-4 mr-2" /> Print</Button>
+        </div>
+      </div>
+
+      {/* Expanded Word Bank */}
+      <div className="bg-slate-50 p-6 rounded-xl border print:hidden">
+        <p className="text-xs font-bold mb-3 text-slate-400 uppercase">Select from {listSource} {level}</p>
+        <div className="flex flex-wrap gap-2">
+          {WORD_BANKS[listSource][level].map(word => (
+            <Button
+              key={word}
+              variant={selectedWords.includes(word) ? "default" : "outline"}
+              onClick={() => toggleWord(word)}
+              className={selectedWords.includes(word) ? 'bg-indigo-600' : ''}
+            >
+              {word}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tracing Worksheet Preview */}
+      <div className="bg-white p-8 border shadow-sm print:shadow-none print:border-0 print:p-0">
+        <div className="text-center border-b-2 border-black pb-4 mb-8">
+          <h1 className="text-3xl font-bold uppercase">Sight Word Trace & Write</h1>
+          <div className="flex justify-between mt-4 text-sm font-mono">
+            <span>Name: _________________</span>
+            <span>Date: _________</span>
+          </div>
+        </div>
+
+        <div className="space-y-12">
+          {selectedWords.map((word) => (
+            <div key={word} className="flex flex-col gap-2">
+              <div className="flex items-baseline gap-8">
+                {/* TRACEABLE WORD */}
+                <span className="text-6xl text-slate-200 font-mono tracking-widest uppercase">
+                  {word}
+                </span>
+                {/* WRITING LINE */}
+                <div className="flex-grow h-12 border-b-2 border-black relative">
+                  <div className="absolute top-1/2 w-full border-t border-dashed border-slate-300"></div>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 uppercase">Trace it • Write it</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
