@@ -1,0 +1,468 @@
+import { useState, useEffect } from "react";
+import { Sparkles, Printer, BookmarkPlus, ChevronRight, FlaskConical, Users, Clock, Layers } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+const SESSION_LENGTHS = ["15 minutes", "20 minutes", "30 minutes"];
+const INSTRUCTIONAL_LEVELS = [
+  { value: "Concrete/Manipulatives", label: "🧱 Concrete / Manipulatives", desc: "Use physical objects to build understanding" },
+  { value: "Representational/Drawing", label: "✏️ Representational / Drawing", desc: "Use pictures, diagrams, or sketches" },
+  { value: "Abstract/Numbers", label: "🔢 Abstract / Numbers", desc: "Use symbols and numerals only" },
+];
+
+const NAVY = "#1A2B3C";
+const SAGE = "#4D7C5F";
+
+export default function MathInterventionCreator() {
+  const [students, setStudents] = useState([]);
+  const [studentId, setStudentId] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [topic, setTopic] = useState("");
+  const [sessionLength, setSessionLength] = useState("20 minutes");
+  const [level, setLevel] = useState("Concrete/Manipulatives");
+  const [lesson, setLesson] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [savingPlanner, setSavingPlanner] = useState(false);
+
+  useEffect(() => {
+    base44.entities.Student.list().then(setStudents);
+  }, []);
+
+  async function handleGenerate() {
+    if (!topic.trim()) {
+      toast.error("Please enter an intervention topic.");
+      return;
+    }
+    setGenerating(true);
+    setLesson(null);
+
+    const name = studentName || "the student";
+    const studentData = students.find(s => s.id === studentId);
+    const interestHint = studentData?.name ? `The student is named ${studentData.name}.` : "";
+
+    const prompt = `You are an expert special education math interventionist using the CRA (Concrete-Representational-Abstract) framework and Explicit Instruction model.
+
+Student: ${name}
+${interestHint}
+Intervention Topic: ${topic}
+Session Length: ${sessionLength}
+Instructional Level: ${level}
+
+Create a structured, teacher-ready math intervention lesson plan formatted as a "Teacher Cheat Sheet." 
+Use the student's name throughout. Make the examples feel personal and motivating.
+
+Return ONLY a JSON object in this exact format (no markdown, no extra text):
+{
+  "title": "Lesson title (e.g., 'Multi-Digit Subtraction with Regrouping')",
+  "objective": "One clear, measurable learning objective",
+  "materials": ["list", "of", "materials needed"],
+  "i_do": {
+    "duration": "e.g., 5 minutes",
+    "script": "Detailed teacher script for modeling. Use first-person. Reference student interests or relatable scenarios.",
+    "key_phrases": ["Think aloud phrase 1", "Think aloud phrase 2", "Think aloud phrase 3"]
+  },
+  "we_do": {
+    "duration": "e.g., 8 minutes",
+    "problems": [
+      { "problem": "First scaffolded problem", "prompt": "Teacher prompt / think-aloud cue" },
+      { "problem": "Second scaffolded problem (slightly harder)", "prompt": "Teacher prompt / think-aloud cue" },
+      { "problem": "Third scaffolded problem (near-independent)", "prompt": "Teacher prompt / think-aloud cue" }
+    ]
+  },
+  "you_do": {
+    "duration": "e.g., 5 minutes",
+    "instruction": "Brief instruction for independent practice",
+    "problems": ["Problem 1", "Problem 2", "Problem 3", "Problem 4", "Problem 5"]
+  },
+  "exit_ticket": {
+    "problem": "One mastery-check problem",
+    "criteria": "What counts as mastery (e.g., correct with no prompts)"
+  },
+  "data_notes": "Prompt for what data the teacher should collect during this session"
+}`;
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          objective: { type: "string" },
+          materials: { type: "array", items: { type: "string" } },
+          i_do: {
+            type: "object",
+            properties: {
+              duration: { type: "string" },
+              script: { type: "string" },
+              key_phrases: { type: "array", items: { type: "string" } },
+            },
+          },
+          we_do: {
+            type: "object",
+            properties: {
+              duration: { type: "string" },
+              problems: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    problem: { type: "string" },
+                    prompt: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          you_do: {
+            type: "object",
+            properties: {
+              duration: { type: "string" },
+              instruction: { type: "string" },
+              problems: { type: "array", items: { type: "string" } },
+            },
+          },
+          exit_ticket: {
+            type: "object",
+            properties: {
+              problem: { type: "string" },
+              criteria: { type: "string" },
+            },
+          },
+          data_notes: { type: "string" },
+        },
+      },
+    });
+
+    setLesson(res);
+    setGenerating(false);
+  }
+
+  async function handleSaveActivity() {
+    if (!lesson) return;
+    setSaving(true);
+    const generatedContent = JSON.stringify(lesson);
+    const studentInterest = studentName || "General";
+    await base44.entities.Activity.create({
+      title: `Math Intervention: ${lesson.title} — ${studentInterest}`,
+      type: "Lesson",
+      grade: students.find(s => s.id === studentId)?.grade || "",
+      subject: "Math",
+      content: generatedContent,
+      source_tool: "Math Intervention Creator",
+    });
+    setSaving(false);
+    setSaved(true);
+    toast.success("Saved to Activities!");
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  async function handleSavePlanner() {
+    if (!lesson) return;
+    setSavingPlanner(true);
+    await base44.entities.ScheduleItem.create({
+      title: `Math Intervention: ${lesson.title}`,
+      time: "Small Group",
+      tier: "Tier 2",
+      day_of_week: "Monday",
+    });
+    setSavingPlanner(false);
+    toast.success("Added to Lesson Planner under Monday — open the Planner to move it to your preferred day.");
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Config Panel */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: NAVY }}>
+            <FlaskConical className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl" style={{ color: NAVY }}>Math Intervention Lesson Creator</h2>
+            <p className="text-sm text-muted-foreground">CRA framework · Explicit Instruction model</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+          {/* Student */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" /> Student Focus
+            </Label>
+            <Select value={studentId} onValueChange={(v) => {
+              setStudentId(v);
+              const s = students.find(s => s.id === v);
+              setStudentName(s?.name || "");
+            }}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue placeholder="Select a student…" /></SelectTrigger>
+              <SelectContent>
+                {students.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.grade})</SelectItem>)}
+                <SelectItem value="__none__">No specific student</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Session Length */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" /> Session Length
+            </Label>
+            <Select value={sessionLength} onValueChange={setSessionLength}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SESSION_LENGTHS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Topic */}
+          <div className="space-y-2 sm:col-span-2">
+            <Label className="text-sm font-semibold">Intervention Topic</Label>
+            <Input
+              placeholder="e.g., Multi-digit subtraction with regrouping, Adding fractions with unlike denominators…"
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              className="rounded-xl border-border/60"
+            />
+          </div>
+
+          {/* Instructional Level */}
+          <div className="space-y-2 sm:col-span-2">
+            <Label className="text-sm font-semibold flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5" /> Instructional Level (CRA)
+            </Label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {INSTRUCTIONAL_LEVELS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setLevel(opt.value)}
+                  className={`text-left p-3 rounded-xl border-2 transition-all text-sm ${level === opt.value ? "border-[#1A2B3C] bg-[#1A2B3C]/5" : "border-border/50 hover:border-border"}`}
+                >
+                  <div className="font-semibold text-foreground">{opt.label}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="rounded-full text-white shadow-md px-6 gap-2"
+            style={{ backgroundColor: NAVY }}
+          >
+            {generating ? (
+              <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Building Lesson…</>
+            ) : (
+              <><Sparkles className="w-4 h-4" /> Generate Lesson Plan</>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Loading */}
+      {generating && (
+        <div className="bg-white rounded-2xl p-10 border border-border/50 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#1A2B3C]/20 border-t-[#1A2B3C] rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Building your intervention lesson…</p>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!lesson && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${NAVY}15` }}>
+            <FlaskConical className="w-8 h-8" style={{ color: NAVY }} />
+          </div>
+          <h3 className="font-display font-semibold text-lg mb-2">Ready to build</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">Select a student, enter a topic, and choose your CRA level to generate a complete explicit instruction lesson plan.</p>
+        </div>
+      )}
+
+      {/* Lesson Plan Output */}
+      {lesson && !generating && (
+        <div className="space-y-4">
+          {/* Action Bar */}
+          <div className="flex items-center justify-between flex-wrap gap-3 no-print">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">{studentName || "General"}</span> ·
+              <span>{sessionLength}</span> ·
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: SAGE }}>{level.split("/")[0]}</span>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSavePlanner} disabled={savingPlanner} variant="outline" className="rounded-full gap-2 text-sm" style={{ borderColor: NAVY, color: NAVY }}>
+                <BookmarkPlus className="w-4 h-4" />{savingPlanner ? "Saving…" : "Save to Planner"}
+              </Button>
+              <Button onClick={handleSaveActivity} disabled={saving || saved} variant="outline" className={`rounded-full gap-2 text-sm transition-all ${saved ? "border-newton-green text-newton-green" : "border-border/60"}`}>
+                <BookmarkPlus className="w-4 h-4" />{saving ? "Saving…" : saved ? "Saved! ✅" : "Save to Activities"}
+              </Button>
+              <Button onClick={() => window.print()} variant="outline" className="rounded-full gap-2 text-sm border-border/60">
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+            </div>
+          </div>
+
+          {/* Cheat Sheet */}
+          <div className="intervention-print-root bg-white rounded-2xl shadow-sm border border-border/40 overflow-hidden">
+            {/* Header */}
+            <div className="px-8 py-6 text-white" style={{ backgroundColor: NAVY }}>
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <span className="font-bold text-sm">N</span>
+                </div>
+                <span className="font-display font-bold text-base opacity-90">NEWTON Learning · Math Intervention</span>
+              </div>
+              <h1 className="font-display font-bold text-2xl sm:text-3xl">{lesson.title}</h1>
+              <p className="text-white/80 text-sm mt-1">
+                {studentName && <span>{studentName} · </span>}
+                {sessionLength} · {level}
+              </p>
+              <div className="mt-4 p-3 rounded-xl bg-white/10 text-sm">
+                <span className="font-semibold text-white/70 uppercase text-xs tracking-wider">Objective: </span>
+                {lesson.objective}
+              </div>
+            </div>
+
+            <div className="h-1 bg-gradient-to-r from-[#4D7C5F] via-[#6BAE80] to-[#4D7C5F]" />
+
+            <div className="p-8 space-y-8">
+              {/* Materials */}
+              {lesson.materials?.length > 0 && (
+                <div>
+                  <SectionHeader label="📦 Materials Needed" />
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {lesson.materials.map((m, i) => (
+                      <span key={i} className="px-3 py-1 rounded-full text-sm border border-border/50 bg-secondary/40">{m}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* I DO */}
+              <div>
+                <SectionHeader label="👁 I DO — Modeling" sub={lesson.i_do?.duration} color={NAVY} />
+                <div className="mt-3 p-4 rounded-xl bg-[#1A2B3C]/5 border border-[#1A2B3C]/15 text-sm leading-relaxed text-foreground whitespace-pre-line">
+                  {lesson.i_do?.script}
+                </div>
+                {lesson.i_do?.key_phrases?.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Think-Aloud Key Phrases</p>
+                    {lesson.i_do.key_phrases.map((phrase, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm">
+                        <ChevronRight className="w-4 h-4 mt-0.5 shrink-0" style={{ color: SAGE }} />
+                        <span>"{phrase}"</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* WE DO */}
+              <div>
+                <SectionHeader label="🤝 WE DO — Guided Practice" sub={lesson.we_do?.duration} color={SAGE} />
+                <div className="mt-3 space-y-3">
+                  {lesson.we_do?.problems?.map((item, i) => (
+                    <div key={i} className="p-4 rounded-xl border border-border/40 bg-secondary/20">
+                      <div className="flex items-start gap-3">
+                        <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ backgroundColor: SAGE }}>{i + 1}</span>
+                        <div className="space-y-1.5 flex-1">
+                          <p className="font-semibold text-base text-foreground">{item.problem}</p>
+                          <p className="text-sm text-muted-foreground italic">💬 "{item.prompt}"</p>
+                        </div>
+                      </div>
+                      {/* Answer space */}
+                      <div className="mt-3 ml-9 border-b-2 border-dashed border-border/40 h-8" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* YOU DO */}
+              <div>
+                <SectionHeader label="✏️ YOU DO — Independent Practice" sub={lesson.you_do?.duration} />
+                <p className="text-sm text-muted-foreground mt-2 mb-3">{lesson.you_do?.instruction}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                  {lesson.you_do?.problems?.map((prob, i) => (
+                    <div key={i} className="p-3 rounded-xl border-2 border-border/40 bg-secondary/20 text-center">
+                      <span className="text-xs font-bold text-muted-foreground block mb-2">#{i + 1}</span>
+                      <p className="font-bold text-base text-foreground">{prob}</p>
+                      <div className="mt-4 border-b-2 border-border/30" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Exit Ticket */}
+              <div>
+                <SectionHeader label="🎟 Exit Ticket — Check for Understanding" />
+                <div className="mt-3 p-4 rounded-xl border-2 bg-secondary/20" style={{ borderColor: SAGE }}>
+                  <p className="font-bold text-lg text-foreground">{lesson.exit_ticket?.problem}</p>
+                  <p className="text-sm mt-2 text-muted-foreground">
+                    <span className="font-semibold" style={{ color: SAGE }}>Mastery: </span>
+                    {lesson.exit_ticket?.criteria}
+                  </p>
+                  <div className="mt-4 border-b-2 border-dashed border-border/40 h-10" />
+                </div>
+              </div>
+
+              {/* Data Notes */}
+              <div>
+                <SectionHeader label="📊 Data Collection Notes" />
+                <div className="mt-2 p-4 rounded-xl bg-secondary/30 border border-border/40">
+                  <p className="text-sm text-muted-foreground italic mb-3">{lesson.data_notes}</p>
+                  <div className="space-y-3">
+                    {["Prompts needed:", "Errors observed:", "Next steps:"].map((label, i) => (
+                      <div key={i}>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
+                        <div className="border-b border-border/40 h-6" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .intervention-print-root, .intervention-print-root * { visibility: visible !important; }
+          .intervention-print-root {
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print { display: none !important; }
+          nav, header, aside, footer, button, [data-radix-popper-content-wrapper] { display: none !important; }
+          @page { margin: 0.5in; size: letter; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SectionHeader({ label, sub, color }) {
+  return (
+    <div className="flex items-center justify-between border-b-2 pb-2" style={{ borderColor: color || "#E2E8F0" }}>
+      <h3 className="font-display font-bold text-base" style={{ color: color || "#1A2B3C" }}>{label}</h3>
+      {sub && <span className="text-xs font-semibold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">{sub}</span>}
+    </div>
+  );
+}
