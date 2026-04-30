@@ -1,0 +1,165 @@
+import React, { useState, useEffect } from 'react';
+import { Save, Printer, CheckCircle, Plus, BookOpen, User } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+
+// Expanded Word Bank Data
+const WORD_BANKS = {
+  Fry: {
+    Kindergarten: ["the", "of", "and", "a", "to", "in", "is", "you", "that", "it"],
+    "Grade 1": ["he", "was", "for", "on", "are", "as", "with", "his", "they", "I"],
+    "Grade 2": ["at", "be", "this", "have", "from", "or", "one", "had", "by", "word"],
+    "Grade 3": ["but", "not", "what", "all", "were", "we", "when", "your", "can", "said"]
+  },
+  Dolch: {
+    Kindergarten: ["am", "at", "ate", "be", "black", "brown", "but", "came", "did", "do"],
+    "Grade 1": ["after", "again", "an", "any", "as", "ask", "by", "could", "every", "fly"],
+    "Grade 2": ["always", "around", "because", "been", "before", "best", "both", "buy", "call", "cold"],
+    "Grade 3": ["about", "better", "bring", "carry", "clean", "done", "draw", "drink", "eight", "fall"]
+  }
+};
+
+export default function SightWordLab() {
+  const [listSource, setListSource] = useState("Fry");
+  const [level, setLevel] = useState("Grade 1");
+  const [selectedWords, setSelectedWords] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState("");
+  const [students, setStudents] = useState([]); // Connects to your Roster
+
+  useEffect(() => {
+    // In a real app, fetch this from your Students entity
+    const savedStudents = JSON.parse(localStorage.getItem('newton_students') || "[]");
+    setStudents(savedStudents);
+  }, []);
+
+  const toggleWord = (word) => {
+    setSelectedWords(prev => 
+      prev.includes(word) ? prev.filter(w => w !== word) : [...prev, word]
+    );
+  };
+
+  const handlePrint = () => {
+    if (selectedWords.length === 0) {
+      toast.error("Please select words to generate a worksheet.");
+      return;
+    }
+    window.print(); // Triggers the browser print dialog
+  };
+
+  const saveToLibrary = () => {
+    const worksheet = {
+      id: Date.now(),
+      title: `${level} ${listSource} Practice`,
+      words: selectedWords,
+      type: "Sight Words",
+      date: new Date().toLocaleDateString()
+    };
+    // Logic to save to your "Library" entity
+    toast.success("Worksheet saved to Library!");
+  };
+
+  const updateMastery = (word, status) => {
+    if (!selectedStudent) {
+      toast.error("Please select a student first.");
+      return;
+    }
+    toast.success(`Updated ${word} status for student.`);
+  };
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto space-y-8 print:p-0">
+      <div className="flex justify-between items-center print:hidden">
+        <h1 className="text-2xl font-bold">Sight Word Lab</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={saveToLibrary}>
+            <Save className="mr-2 h-4 w-4" /> Save to Library
+          </Button>
+          <Button onClick={handlePrint} className="bg-indigo-600">
+            <Printer className="mr-2 h-4 w-4" /> Print Sheet
+          </Button>
+        </div>
+      </div>
+
+      {/* Configuration Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:hidden">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Connect to Student</label>
+          <Select onValueChange={setSelectedStudent}>
+            <SelectTrigger><SelectValue placeholder="Select Student" /></SelectTrigger>
+            <SelectContent>
+              {students.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">List Source</label>
+          <Select value={listSource} onValueChange={setListSource}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Fry">Fry High Frequency</SelectItem>
+              <SelectItem value="Dolch">Dolch List</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Grade Level</label>
+          <Select value={level} onValueChange={setLevel}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Kindergarten">Kindergarten</SelectItem>
+              <SelectItem value="Grade 1">Grade 1</SelectItem>
+              <SelectItem value="Grade 2">Grade 2</SelectItem>
+              <SelectItem value="Grade 3">Grade 3</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Word Bank */}
+      <div className="bg-slate-50 p-6 rounded-xl border print:hidden">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <BookOpen className="h-4 w-4" /> Select Words from Bank
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          {WORD_BANKS[listSource][level].map(word => (
+            <Button
+              key={word}
+              variant={selectedWords.includes(word) ? "default" : "outline"}
+              onClick={() => toggleWord(word)}
+              className="rounded-full"
+            >
+              {word}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Worksheet Preview (The Print Content) */}
+      <div className="bg-white p-8 border rounded-lg shadow-sm min-h-[400px]">
+        <div className="text-center border-b pb-4 mb-6">
+          <h2 className="text-3xl font-serif font-bold uppercase tracking-widest">Sight Word Practice</h2>
+          <div className="flex justify-between mt-4 text-sm font-medium">
+            <span>Name: __________________________</span>
+            <span>Date: ________________</span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-8 mt-12">
+          {selectedWords.map(word => (
+            <div key={word} className="border-b-2 border-slate-200 pb-2 flex flex-col gap-2">
+              <span className="text-4xl font-medium">{word}</span>
+              <span className="text-slate-300 text-xs uppercase tracking-tighter">Read it • Write it • Use it</span>
+            </div>
+          ))}
+        </div>
+        {selectedWords.length === 0 && (
+          <p className="text-center text-slate-400 mt-20 print:hidden">Select words above to generate your worksheet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
