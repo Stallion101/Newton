@@ -1,0 +1,151 @@
+import React, { useState, useEffect } from 'react';
+import { Printer, BookOpen, UserCheck, Save, FileText, RotateCcw } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
+
+const WORD_BANKS = {
+  Fry: {
+    Kindergarten: ["the", "of", "and", "a", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on", "are", "as", "with", "his", "they", "I", "at", "be", "this", "have", "from"],
+    "Grade 1": ["or", "one", "had", "by", "word", "but", "not", "what", "all", "were", "we", "when", "your", "can", "said", "there", "use", "an", "each", "which", "she", "do", "how", "their", "if"],
+    "Grade 2": ["will", "up", "other", "about", "out", "many", "then", "them", "these", "so", "some", "her", "would", "make", "like", "him", "into", "time", "has", "look", "two", "more", "write", "go", "see"],
+    "Grade 3": ["number", "no", "way", "could", "people", "my", "than", "first", "water", "been", "called", "who", "oil", "sit", "now", "find", "long", "down", "day", "did", "get", "come", "made", "may", "part"]
+  }
+};
+
+export default function SightWordLab() {
+  const [listSource, setListSource] = useState("Fry");
+  const [level, setLevel] = useState("Grade 1");
+  const [selectedWords, setSelectedWords] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+
+  useEffect(() => {
+    const saved = localStorage.getItem('newton_students');
+    if (saved) setStudents(JSON.parse(saved));
+  }, []);
+
+  const toggleWord = (word) => {
+    setSelectedWords(prev => 
+      prev.includes(word) ? prev.filter(w => w !== word) : [...prev, word]
+    );
+  };
+
+  const handleSyncMastery = () => {
+    if (!selectedStudentId) return toast.error("Select a student first!");
+    const updated = students.map(s => s.id.toString() === selectedStudentId ? { ...s, sightWordScore: selectedWords.length.toString() } : s);
+    setStudents(updated);
+    localStorage.setItem('newton_students', JSON.stringify(updated));
+    toast.success("Mastery score synced to Student Roster!");
+  };
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <Tabs defaultValue="generator" className="w-full">
+        <div className="flex justify-between items-center mb-6 print:hidden">
+          <TabsList className="bg-slate-100 p-1">
+            <TabsTrigger value="generator" className="flex gap-2"><FileText size={16}/> Traceable Sheets</TabsTrigger>
+            <TabsTrigger value="mastery" className="flex gap-2"><UserCheck size={16}/> Mastery Check</TabsTrigger>
+          </TabsList>
+          
+          <div className="flex gap-2">
+             {/* Print logic specifically for the Generator tab */}
+             <Button onClick={() => window.print()} className="bg-indigo-600"><Printer size={16} className="mr-2"/> Print</Button>
+          </div>
+        </div>
+
+        {/* SHARED SETTINGS PANEL */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 rounded-xl border shadow-sm mb-6 print:hidden">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-slate-400">Target Student</label>
+            <Select onValueChange={setSelectedStudentId} value={selectedStudentId}>
+              <SelectTrigger><SelectValue placeholder="Connect to Roster" /></SelectTrigger>
+              <SelectContent>
+                {students.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-slate-400">List Level</label>
+            <Select value={level} onValueChange={setLevel}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.keys(WORD_BANKS.Fry).map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+             <Button variant="ghost" onClick={() => setSelectedWords([])} className="text-slate-400 hover:text-red-500"><RotateCcw size={14} className="mr-2"/> Reset Selection</Button>
+          </div>
+        </div>
+
+        {/* WORD BANK SELECTOR */}
+        <div className="bg-slate-50 p-6 rounded-xl border mb-8 print:hidden">
+          <div className="flex flex-wrap gap-2">
+            {WORD_BANKS.Fry[level].map(word => (
+              <Button
+                key={word}
+                variant={selectedWords.includes(word) ? "default" : "outline"}
+                onClick={() => toggleWord(word)}
+                className={`rounded-full ${selectedWords.includes(word) ? 'bg-indigo-600' : ''}`}
+              >
+                {word}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* TAB 1: TRACEABLE GENERATOR */}
+        <TabsContent value="generator">
+          <div className="bg-white p-12 border shadow-sm print:shadow-none print:border-0 print:p-0">
+            <div className="text-center border-b-4 border-black pb-4 mb-10">
+              <h1 className="text-4xl font-black uppercase tracking-tight">Sight Word Trace & Write</h1>
+              <div className="flex justify-between mt-6 text-lg font-bold">
+                <span>Name: ________________</span>
+                <span>Date: _________</span>
+              </div>
+            </div>
+            <div className="space-y-12">
+              {selectedWords.map((word) => (
+                <div key={word} className="flex flex-col gap-4 pb-4 border-b border-dashed border-slate-200 last:border-0">
+                  <div className="flex items-baseline gap-10">
+                    <span className="text-7xl text-slate-200 font-mono tracking-[0.2em] uppercase opacity-40 select-none leading-none">
+                      {word}
+                    </span>
+                    <div className="flex-grow h-16 border-b-2 border-black relative">
+                      <div className="absolute top-1/2 w-full border-t border-dashed border-slate-300"></div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Trace the word • Write it on the line • Use it in a sentence</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* TAB 2: MASTERY CHECK */}
+        <TabsContent value="mastery">
+          <div className="bg-white border rounded-2xl p-8 text-center space-y-6">
+            <div className="inline-flex items-center justify-center p-4 bg-indigo-50 text-indigo-700 rounded-full mb-4">
+              <UserCheck size={32} />
+            </div>
+            <h2 className="text-2xl font-bold">Assess Student Progress</h2>
+            <p className="text-slate-500 max-w-md mx-auto">
+              Select words in the bank above that the student has mastered. Then, sync this data to update their profile in the roster.
+            </p>
+            <div className="bg-slate-50 p-4 rounded-lg inline-block border">
+              <span className="text-3xl font-black text-indigo-600">{selectedWords.length}</span>
+              <span className="text-slate-400 uppercase text-xs font-bold ml-2">Words Mastered</span>
+            </div>
+            <div>
+              <Button onClick={handleSyncMastery} className="bg-emerald-600 hover:bg-emerald-700 h-12 px-8 font-bold">
+                <Save className="mr-2 h-4 w-4" /> Sync to Student Profile
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
