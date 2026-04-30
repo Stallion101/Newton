@@ -1,0 +1,153 @@
+import React, { useState, useEffect } from 'react';
+import { UserCheck, Trophy, RotateCcw, Save } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+
+const WORD_BANKS = {
+  Fry: {
+    Kindergarten: ["the", "of", "and", "a", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on", "are", "as", "with", "his", "they", "I", "at", "be", "this", "have", "from"],
+    "Grade 1": ["or", "one", "had", "by", "word", "but", "not", "what", "all", "were", "we", "when", "your", "can", "said", "there", "use", "an", "each", "which", "she", "do", "how", "their", "if"],
+    "Grade 2": ["will", "up", "other", "about", "out", "many", "then", "them", "these", "so", "some", "her", "would", "make", "like", "him", "into", "time", "has", "look", "two", "more", "write", "go", "see"],
+    "Grade 3": ["number", "no", "way", "could", "people", "my", "than", "first", "water", "been", "called", "who", "oil", "sit", "now", "find", "long", "down", "day", "did", "get", "come", "made", "may", "part"]
+  }
+};
+
+export default function SightWordChecker() {
+  const [students, setStudents] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [level, setLevel] = useState("Grade 1");
+  const [masteredWords, setMasteredWords] = useState([]);
+
+  // 1. Load Students from Roster
+  useEffect(() => {
+    const saved = localStorage.getItem('newton_students');
+    if (saved) setStudents(JSON.parse(saved));
+  }, []);
+
+  const toggleMastery = (word) => {
+    setMasteredWords(prev => 
+      prev.includes(word) ? prev.filter(w => w !== word) : [...prev, word]
+    );
+// 1. Logic for toggling words in the checker
+  const toggleMastery = (word) => {
+    setMasteredWords(prev => 
+      prev.includes(word) ? prev.filter(w => w !== word) : [...prev, word]
+    );
+  };
+
+  // 2. The "Bridge" function to sync with the Student Roster
+  const saveMasteryToProfile = () => {
+    if (!selectedStudentId) return toast.error("Please select a student!");
+
+    // Get current roster to avoid overwriting other data
+    const currentRoster = JSON.parse(localStorage.getItem('newton_students') || "[]");
+
+    const updatedRoster = currentRoster.map(s => {
+      if (s.id.toString() === selectedStudentId) {
+        return { ...s, sightWordScore: masteredWords.length.toString() };
+      }
+      return s;
+    });
+
+    // Save to permanent storage
+    localStorage.setItem('newton_students', JSON.stringify(updatedRoster));
+    setStudents(updatedRoster); 
+    toast.success(`Mastery synced! Roster updated to ${masteredWords.length}.`);
+  };
+
+  // Ensure the return statement follows immediately after this closing brace
+  };
+
+  // PASTE IT HERE (Renamed to match your button)
+  const saveMasteryToProfile = () => {
+    if (!selectedStudentId) return toast.error("Please select a student!");
+
+    // 1. Get the most current list from storage to avoid overwriting
+    const currentRoster = JSON.parse(localStorage.getItem('newton_students') || "[]");
+
+    // 2. Update the specific student's score
+    const updatedRoster = currentRoster.map(s => {
+      if (s.id.toString() === selectedStudentId) {
+        // This updates the 'sightWordScore' field with the count of mastered words
+        return { ...s, sightWordScore: masteredWords.length.toString() };
+      }
+      return s;
+    });
+
+    // 3. Save back to storage and update local state
+    localStorage.setItem('newton_students', JSON.stringify(updatedRoster));
+    setStudents(updatedRoster); 
+    
+toast.success(`Mastery synced! Roster updated to ${masteredWords.length}.`);
+  }; // <--- This should be the last line of this block
+
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="bg-indigo-900 text-white p-8 rounded-2xl shadow-lg relative overflow-hidden">
+        <div className="relative z-10">
+          <h1 className="text-3xl font-bold flex items-center gap-3">
+            <Trophy className="text-yellow-400" /> Sight Word Mastery Check
+          </h1>
+          <p className="text-indigo-200 mt-2">Assess student progress and update their CBM profile.</p>
+        </div>
+        <div className="absolute right-[-20px] bottom-[-20px] opacity-10">
+          <UserCheck size={200} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 rounded-xl border shadow-sm">
+        <div className="space-y-1">
+          <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Active Student</label>
+          <Select onValueChange={setSelectedStudentId} value={selectedStudentId}>
+            <SelectTrigger><SelectValue placeholder="Select from Roster" /></SelectTrigger>
+            <SelectContent>
+              {students.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Level</label>
+          <Select value={level} onValueChange={setLevel}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.keys(WORD_BANKS.Fry).map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end gap-2">
+          <Button onClick={saveMasteryToProfile} className="w-full bg-indigo-600 hover:bg-indigo-700 font-bold">
+            <Save className="h-4 w-4 mr-2" /> Sync to Profile
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
+          <span className="text-sm font-bold text-slate-600 uppercase tracking-widest">Mastery Tracker</span>
+          <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-black">
+            {masteredWords.length} / {WORD_BANKS.Fry[level].length} MASTERED
+          </span>
+        </div>
+        
+        <div className="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {WORD_BANKS.Fry[level].map(word => (
+            <button
+              key={word}
+              onClick={() => toggleMastery(word)}
+              className={`p-4 rounded-xl border-2 transition-all text-center font-bold ${
+                masteredWords.includes(word) 
+                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-inner scale-95' 
+                : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'
+              }`}
+            >
+              {word}
+              {masteredWords.includes(word) && <div className="text-[10px] uppercase mt-1">Learned!</div>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
