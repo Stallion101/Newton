@@ -1,0 +1,176 @@
+import React, { useState, useEffect } from 'react';
+import { Printer, Timer, RefreshCw, BookOpen, Monitor, Play, FileText } from 'lucide-react';
+
+const ORFTeacherView = ({ student }) => {
+  const [timer, setTimer] = useState(60);
+  const [isActive, setIsActive] = useState(false);
+  const [errors, setErrors] = useState([]);
+  const [lastWordRead, setLastWordRead] = useState(null);
+  const [gradeLevel, setGradeLevel] = useState("2");
+  const [passage, setPassage] = useState(null);
+  const [viewMode, setViewMode] = useState('teacher'); // 'teacher' or 'student'
+
+  // Simulating the "Six Minute Solution" style generator
+  const generatePassage = (level) => {
+    // In a real app, this would call your AI endpoint
+    const samplePassages = {
+      "K": "The cat sat on the mat. The dog ran to the sun. I see a red bird.",
+      "1": "Sam has a big blue boat. He likes to sail on the lake when it is hot outside.",
+      "2": "Exploring the deep ocean is very exciting. Divers see colorful fish and giant whales hiding in the coral reefs.",
+      "3": "The water cycle is a continuous process. Sun heats the water, it turns to vapor, and then falls back down as rain or snow."
+    };
+    setPassage({
+      title: `Level ${level} Fluency Probe`,
+      text: samplePassages[level] || "Sample text for the selected grade level goes here.",
+      grade: level
+    });
+    setErrors([]);
+    setLastWordRead(null);
+    setTimer(60);
+  };
+
+  useEffect(() => {
+    let interval = null;
+    if (isActive && timer > 0) {
+      interval = setInterval(() => setTimer(t => t - 1), 1000);
+    } else if (timer === 0) {
+      setIsActive(false);
+    }
+    return () => clearInterval(interval);
+  }, [isActive, timer]);
+
+  const words = passage?.text.split(' ') || [];
+
+  // Helper to get cumulative word count for line ends
+  const getLineEndCount = (index) => {
+    // This logic assumes roughly 10 words per line for printing
+    return (index + 1) % 10 === 0 ? index + 1 : null;
+  };
+
+  if (!passage) {
+    return (
+      <div className="p-12 text-center bg-white rounded-3xl border border-slate-200">
+        <BookOpen className="w-12 h-12 text-newton-pink mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-4">Reading Fluency Lab</h2>
+        <p className="text-slate-500 mb-6">Select a grade level to generate a DIBELS-aligned probe.</p>
+        <div className="flex justify-center gap-2 mb-8">
+          {["K", "1", "2", "3", "4", "5"].map(lvl => (
+            <button 
+              key={lvl}
+              onClick={() => setGradeLevel(lvl)}
+              className={`w-12 h-12 rounded-xl font-bold transition-all ${gradeLevel === lvl ? 'bg-newton-pink text-white' : 'bg-slate-100 text-slate-600'}`}
+            >
+              {lvl}
+            </button>
+          ))}
+        </div>
+        <button 
+          onClick={() => generatePassage(gradeLevel)}
+          className="px-8 py-3 bg-newton-pink text-white rounded-2xl font-bold shadow-lg hover:scale-105 transition-transform"
+        >
+          Generate Grade {gradeLevel} Passage
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header Controls */}
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex gap-4">
+          <button 
+            onClick={() => setViewMode('teacher')}
+            className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${viewMode === 'teacher' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
+          >
+            <FileText className="w-4 h-4" /> Teacher View
+          </button>
+          <button 
+            onClick={() => setViewMode('student')}
+            className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${viewMode === 'student' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
+          >
+            <Monitor className="w-4 h-4" /> Student View (Smartboard)
+          </button>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className={`px-4 py-2 rounded-full font-mono text-xl font-bold ${timer < 10 ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-700'}`}>
+            <Timer className="w-5 h-5 inline mr-2" />
+            0:{String(timer).padStart(2, '0')}
+          </div>
+          <button 
+            onClick={() => setIsActive(!isActive)}
+            className={`px-6 py-2 rounded-full font-bold text-white ${isActive ? 'bg-amber-500' : 'bg-green-600'}`}
+          >
+            {isActive ? 'Pause' : 'Start Timer'}
+          </button>
+          <button onClick={() => setPassage(null)} className="p-2 text-slate-400 hover:text-newton-pink">
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className={`bg-white rounded-3xl p-10 border border-slate-200 shadow-sm relative ${viewMode === 'student' ? 'text-center' : ''}`}>
+        
+        {viewMode === 'teacher' ? (
+          <div className="grid grid-cols-[1fr_50px] gap-4 leading-[3.5rem]">
+            <div className="text-2xl font-medium text-slate-700">
+              {words.map((word, i) => (
+                <span key={i} className="inline-block mr-3 relative">
+                  <button
+                    onClick={() => {
+                      if (errors.includes(i)) setErrors(errors.filter(e => e !== i));
+                      else setErrors([...errors, i]);
+                    }}
+                    onContextMenu={(e) => { e.preventDefault(); setLastWordRead(i); }}
+                    className={`px-1 rounded cursor-pointer transition-colors ${
+                      errors.includes(i) ? 'bg-red-100 text-red-600 line-through' : 
+                      (lastWordRead !== null && i <= lastWordRead) ? 'text-slate-900' : 'text-slate-300'
+                    }`}
+                  >
+                    {word}
+                  </button>
+                </span>
+              ))}
+            </div>
+            {/* Sidebar Numbers for Teacher Printout Reference */}
+            <div className="flex flex-col text-right text-slate-300 font-mono text-sm leading-[3.5rem] pt-2">
+              {words.map((_, i) => getLineEndCount(i) && <div key={i}>{getLineEndCount(i)}</div>)}
+            </div>
+          </div>
+        ) : (
+          /* Student Version: Clean, Large, High Contrast */
+          <div className="max-w-4xl mx-auto py-12">
+            <h1 className="text-5xl font-bold leading-relaxed text-slate-800">
+              {passage.text}
+            </h1>
+          </div>
+        )}
+
+        {/* Scoring Footer (Teacher Only) */}
+        {viewMode === 'teacher' && lastWordRead !== null && (
+          <div className="mt-12 p-6 bg-slate-50 rounded-2xl border border-slate-100 flex justify-around">
+            <div className="text-center">
+              <p className="text-xs font-bold text-slate-400 uppercase">Total Words</p>
+              <p className="text-3xl font-black">{lastWordRead + 1}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-bold text-red-400 uppercase">Errors</p>
+              <p className="text-3xl font-black text-red-600">{errors.length}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-bold text-green-500 uppercase">WCPM</p>
+              <p className="text-3xl font-black text-green-700">{(lastWordRead + 1) - errors.length}</p>
+            </div>
+            <button className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">
+              <Printer className="w-4 h-4" /> Print Results
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ORFTeacherView;
