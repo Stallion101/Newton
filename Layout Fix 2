@@ -1,0 +1,185 @@
+import { Outlet, Link, useLocation } from "react-router-dom";
+import { 
+  Users, 
+  CalendarDays, 
+  BarChart3, 
+  Sparkles, 
+  Lock, 
+  BookMarked, 
+  Menu,
+  X,
+  HelpCircle
+} from "lucide-react";
+import { useState } from "react";
+import ProfileDropdown from "./ProfileDropdown";
+import { useAuth } from "@/lib/AuthContext";
+import AboutNewtonModal from "./AboutNewtonModal";
+
+// Primary Navigation - Simplified to avoid redundancy
+const navItems = [
+  { path: "/students", label: "Students", icon: Users },
+  { path: "/planner", label: "Planner", icon: CalendarDays },
+  { path: "/analytics", label: "Analytics", icon: BarChart3 },
+  { path: "/tools", label: "The Lab", icon: Sparkles },
+  { path: "/library", label: "Library", icon: BookMarked },
+];
+
+// Bottom nav items for mobile
+const mobileBottomNav = [
+  { path: "/", label: "Dashboard", icon: BarChart3 },
+  { path: "/students", label: "Students", icon: Users },
+  { path: "/tools", label: "The Lab", icon: Sparkles },
+];
+
+// Routes that require authentication
+const PROTECTED_PATHS = ["/tools", "/library", "/students", "/planner", "/analytics"];
+
+function ProtectedPage({ navigateToLogin }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: "#1A2B3C15" }}>
+        <Lock className="w-8 h-8" style={{ color: "#1A2B3C" }} />
+      </div>
+      <h2 className="font-display font-bold text-2xl mb-2" style={{ color: "#1A2B3C" }}>Sign in required</h2>
+      <p className="text-muted-foreground mb-6 max-w-sm">This page is protected. Sign in to access your classroom tools and activities.</p>
+      <button
+        onClick={navigateToLogin}
+        className="px-6 py-3 rounded-full text-white font-semibold shadow-md transition-transform hover:scale-105 active:scale-95"
+        style={{ backgroundColor: "#1A2B3C" }}
+      >
+        Sign In to Continue →
+      </button>
+    </div>
+  );
+}
+
+export default function Layout() {
+  const location = useLocation();
+  const { isAuthenticated, navigateToLogin } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+ 
+  const isProtected = PROTECTED_PATHS.some(p => location.pathname.startsWith(p));
+
+  return (
+    <div className="min-h-screen bg-background font-sans">
+      {/* Top Navigation Bar */}
+      <nav className="sticky top-0 z-50 bg-white border-b border-border/50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
+          
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
+            <div className="w-9 h-9 rounded-full bg-newton-pink flex items-center justify-center shadow-sm">
+              <span className="text-white font-display font-bold text-sm">N</span>
+            </div>
+            <span className="font-display font-bold text-xl tracking-tight text-foreground">NEWTON</span>
+          </Link>
+
+          {/* Desktop Nav */}
+          <div className="hidden md:flex items-center gap-1">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+                    isActive
+                      ? "bg-newton-pink text-white shadow-md shadow-newton-pink/25"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Action Area */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setAboutOpen(true)}
+              className="p-2 rounded-full hover:bg-secondary transition-colors"
+              title="About Newton"
+            >
+              <HelpCircle className="w-5 h-5 text-muted-foreground" />
+            </button>
+            <ProfileDropdown />
+            <button 
+              className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors" 
+              onClick={() => setMobileOpen(!mobileOpen)}
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Dropdown Menu */}
+        {mobileOpen && (
+          <div className="md:hidden border-t border-border/50 bg-white p-4 space-y-1 animate-in slide-in-from-top duration-200">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    isActive
+                      ? "bg-newton-pink text-white shadow-sm"
+                      : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </nav>
+
+      <AboutNewtonModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+
+      {/* Brand Accent Bar */}
+      <div className="h-1 bg-gradient-to-r from-newton-pink via-newton-purple to-newton-cyan" />
+
+      {/* Main Viewport */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pb-24 md:pb-8">
+        {isProtected && !isAuthenticated ? (
+          <ProtectedPage navigateToLogin={navigateToLogin} />
+        ) : (
+          <Outlet />
+        )}
+      </main>
+
+      {/* Mobile Sticky Bottom Nav */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t border-border/50 shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center justify-around px-2 py-2">
+          {mobileBottomNav.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className="flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl transition-all"
+              >
+                <item.icon
+                  className="w-5 h-5"
+                  style={{ color: isActive ? "#D6006E" : "#94A3B8" }}
+                />
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider"
+                  style={{ color: isActive ? "#D6006E" : "#94A3B8" }}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
+  );
+}
