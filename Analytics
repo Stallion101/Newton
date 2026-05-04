@@ -1,0 +1,71 @@
+import React, { useMemo } from "react";
+import { BarChart3, Users, Clock, TrendingUp } from "lucide-react";
+
+export default function Analytics() {
+  // 1. THE SCANNER LOGIC
+  const stats = useMemo(() => {
+    const students = JSON.parse(localStorage.getItem('newton_students') || "[]");
+    
+    const avgWCPM = students.length > 0 
+      ? (students.reduce((acc, s) => acc + (Number(s.orf) || 0), 0) / students.length).toFixed(1) 
+      : 0;
+
+    const staleAssessments = students.filter(s => {
+      const lastUpdate = new Date(s.lastUpdated);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return lastUpdate < weekAgo;
+    });
+
+    return {
+      total: students.length,
+      averageWCPM: avgWCPM,
+      staleCount: staleAssessments.length
+    };
+  }, []);
+
+  // 2. THE UI
+  return (
+    <div className="p-8 max-w-7xl mx-auto space-y-8 bg-[#F8FAFA] min-h-screen">
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-black tracking-tight text-slate-800 uppercase">Dashboard Engine</h1>
+          <p className="text-slate-500 font-medium">Class-wide performance and assessment recency.</p>
+        </div>
+      </div>
+
+      {/* INSIGHT CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="w-12 h-12 bg-[#86A789]/10 rounded-2xl flex items-center justify-center mb-4 text-[#86A789]">
+            <Users size={24} />
+          </div>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Roster</p>
+          <h3 className="text-3xl font-black text-slate-800">{stats.total}</h3>
+        </div>
+
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="w-12 h-12 bg-[#D2E0FB]/40 rounded-2xl flex items-center justify-center mb-4 text-[#5F7ADB]">
+            <TrendingUp size={24} />
+          </div>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Avg Fluency (WCPM)</p>
+          <h3 className="text-3xl font-black text-slate-800">{stats.averageWCPM}</h3>
+        </div>
+
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mb-4 text-orange-500">
+            <Clock size={24} />
+          </div>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Needs Assessment</p>
+          <h3 className="text-3xl font-black text-slate-800">{stats.staleCount}</h3>
+        </div>
+      </div>
+
+      {/* PLACEHOLDER FOR CHARTS */}
+      <div className="bg-white rounded-[2.5rem] border border-dashed border-slate-200 p-20 text-center">
+         <BarChart3 className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+         <p className="text-slate-400 font-medium italic">Trend Analysis Component loading...</p>
+      </div>
+    </div>
+  );
+}
