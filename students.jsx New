@@ -1,0 +1,180 @@
+import React, { useState, useEffect } from "react";
+import { Plus, UserPlus, Search, Edit2, Trash2, Save, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+export default function Students() {
+  const [students, setStudents] = useState([]);
+  const [isDialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState({ name: "", sightWordScore: "", orf: "" });
+  const [formData, setFormData] = useState({ nickname: "", sightWordScore: "", orf: "" });
+
+  // 1. Initial Load from Newton shared memory
+  useEffect(() => {
+    const saved = localStorage.getItem('newton_students');
+    if (saved) {
+      setStudents(JSON.parse(saved));
+    }
+  }, []);
+
+  // 2. Handle Add Student (Manual Entry)
+  const handleAddStudent = () => {
+    if (!formData.nickname.trim()) return;
+    
+    const newEntry = {
+      id: Date.now(),
+      name: formData.nickname,
+sightWordScore: parseInt(formData.sightWordScore) || 0,
+orf: parseInt(formData.orf) || 0,
+    };
+
+    const updatedList = [...students, newEntry];
+    setStudents(updatedList);
+    localStorage.setItem('newton_students', JSON.stringify(updatedList));
+
+    setFormData({ nickname: "", sightWordScore: "", orf: "" });
+    setDialogOpen(false);
+    toast.success(`${formData.nickname} added to roster.`);
+  };
+
+  // 3. Handle Delete
+  const deleteStudent = (id) => {
+    const updated = students.filter(s => s.id !== id);
+    setStudents(updated);
+    localStorage.setItem('newton_students', JSON.stringify(updated));
+    toast.error("Student removed.");
+  };
+
+  // 4. Inline Edit Logic
+  const startEditing = (student) => {
+    setEditingId(student.id);
+    setEditValue({ name: student.name, sightWordScore: student.sightWordScore, orf: student.orf });
+  };
+
+  const saveEdit = () => {
+    const updated = students.map(s => s.id === editingId ? { ...s, ...editValue } : s);
+    setStudents(updated);
+    localStorage.setItem('newton_students', JSON.stringify(updated));
+    setEditingId(null);
+    toast.success("Profile updated.");
+  };
+
+ const newEntry = {
+  id: Date.now(),
+  name: formData.nickname,
+  sightWordScore: formData.sightWordScore || 0,
+  orf: formData.orf || 0,
+  lastUpdated: new Date().toISOString(), // Add this for trend tracking
+}; 
+
+  return (
+    <div className="p-8 max-w-6xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-black tracking-tight">Student Roster</h1>
+          <p className="text-slate-500">Manage CBM data and student profiles.</p>
+        </div>
+
+        <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-indigo-600 hover:bg-indigo-700 rounded-2xl h-12 px-6 font-bold shadow-lg shadow-indigo-200">
+              <UserPlus className="mr-2 h-5 w-5" /> Add Student
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="rounded-[2rem] p-8">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-black">New Student Entry</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase text-slate-400">Nickname</label>
+                <Input 
+                  placeholder="e.g. Aiko" 
+                  value={formData.nickname}
+                  onChange={(e) => setFormData({...formData, nickname: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase text-slate-400">Sight Word Score</label>
+                  <Input 
+                    placeholder="e.g. 45" 
+                    value={formData.sightWordScore}
+                    onChange={(e) => setFormData({...formData, sightWordScore: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase text-slate-400">ORF (WCPM)</label>
+                  <Input 
+                    placeholder="e.g. 82" 
+                    value={formData.orf}
+                    onChange={(e) => setFormData({...formData, orf: e.target.value})}
+                  />
+                </div>
+              </div>
+              <Button onClick={handleAddStudent} className="w-full bg-indigo-600 h-12 rounded-xl mt-4 font-bold">
+                Save to Roster
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b">
+            <tr>
+              <th className="px-6 py-4 text-xs font-black uppercase text-slate-400">Student Nickname</th>
+              <th className="px-6 py-4 text-xs font-black uppercase text-slate-400">Sight Word CBM</th>
+              <th className="px-6 py-4 text-xs font-black uppercase text-slate-400">ORF (Manual)</th>
+              <th className="px-6 py-4 text-right text-xs font-black uppercase text-slate-400">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {students.map((student) => (
+              <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-6 py-4 font-bold text-slate-700">
+                  {editingId === student.id ? (
+                    <Input value={editValue.name} onChange={(e) => setEditValue({...editValue, name: e.target.value})} />
+                  ) : student.name}
+                </td>
+                <td className="px-6 py-4">
+                  {editingId === student.id ? (
+                    <Input value={editValue.sightWordScore} onChange={(e) => setEditValue({...editValue, sightWordScore: e.target.value})} />
+                  ) : (
+                    <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-black uppercase tracking-tighter">
+                      {student.sightWordScore} Correct
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4 font-mono font-medium text-slate-600">
+                  {editingId === student.id ? (
+                    <Input value={editValue.orf} onChange={(e) => setEditValue({...editValue, orf: e.target.value})} />
+                  ) : student.orf}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    {editingId === student.id ? (
+                      <Button size="sm" onClick={saveEdit} className="bg-emerald-500"><Save size={16}/></Button>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => startEditing(student)}><Edit2 size={16}/></Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="text-red-400" onClick={() => deleteStudent(student.id)}>
+                      <Trash2 size={16}/>
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {students.length === 0 && (
+          <div className="p-12 text-center text-slate-300 italic">No students in roster yet.</div>
+        )}
+      </div>
+    </div>
+  );
+}
