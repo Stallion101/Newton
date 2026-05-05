@@ -1,0 +1,363 @@
+import { useState, useEffect } from "react";
+import { Sparkles, Copy, BookmarkPlus, Check, RefreshCw, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+const NAVY = "#1A2B3C";
+const SAGE = "#76B5B3";
+
+const SECTION_TYPES = [
+  { value: "meeting_notes", label: "Meeting Notes", description: "Parent/team conference summary" },
+  { value: "access_implementation", label: "Access & Implementation", description: "How student accesses curriculum" },
+  { value: "esy_narrative", label: "ESY Narrative", description: "Extended School Year eligibility" },
+  { value: "assessment_observations", label: "Assessment Observations", description: "Evaluation & testing observations" },
+  { value: "plaafp", label: "PLAAFP Statement", description: "Present levels of performance" },
+  { value: "annual_goal", label: "Annual Goal Narrative", description: "Goal rationale and context" },
+];
+
+const QUICK_ACTIONS = [
+  { id: "professionalize", icon: "✨", label: "Professionalize", desc: "Increase formality and objectivity" },
+  { id: "add_data", icon: "📊", label: "Add Data Placeholders", desc: "Insert [X%], [Date], [# of trials]" },
+  { id: "condense", icon: "📝", label: "Condense for Portal", desc: "Shorten for character-limited fields" },
+];
+
+export default function IEPNarrativeAssistant() {
+  const [students, setStudents] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [sectionType, setSectionType] = useState("plaafp");
+  const [rawNotes, setRawNotes] = useState("");
+  const [draft, setDraft] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [refining, setRefining] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [charCount, setCharCount] = useState(0);
+
+  useEffect(() => {
+    base44.entities.Student.list().then(setStudents).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setCharCount(draft.length);
+  }, [draft]);
+
+const selectedStudent = students.find(s => s.id === selectedStudentId);
+
+  async function handleGenerate() {
+    if (!rawNotes.trim()) { toast.error("Please enter your raw observations first."); return; }
+    setGenerating(true);
+    setDraft("");
+    setSaved(false);
+
+const studentName = selectedStudent?.nickname || selectedStudent?.name || "the student";
+    const studentContext = selectedStudent
+      ? `Student: ${studentName}, Grade: ${selectedStudent.grade}${selectedStudent.category ? `, Category: ${selectedStudent.category}` : ""}${selectedStudent.notes ? `, Additional Info: ${selectedStudent.notes}` : ""}`
+      : "Student context not provided";
+
+    const prompt = `You are an expert Special Education consultant and IEP writer with 20+ years of experience in FLDOE compliance, IDEA regulations, and evidence-based special education practice.
+
+${studentContext}
+IEP Section Type: ${sectionLabel}
+
+Raw teacher observations/notes:
+"${rawNotes}"
+
+Transform these raw notes into a professional, legally-compliant IEP narrative for the "${sectionLabel}" section. Apply ALL of these transformations:
+
+1. PROFESSIONALIZE: Convert informal language into objective, professional terminology:
+   - "got mad / upset" → "demonstrated difficulty with emotional regulation"
+   - "can't sit still" → "exhibits challenges maintaining sustained attention during seated tasks"
+   - "doesn't get it" → "requires additional scaffolding to access grade-level content"
+   - "refuses to work" → "demonstrates task avoidance behaviors during [subject] activities"
+   - "talks too much" → "demonstrates difficulty with self-monitoring verbal output"
+   - "does great / is good at" → "demonstrates proficiency in" or "consistently exhibits strength in"
+
+2. MAKE IT DATA-REFERENCED: Where numbers/percentages are mentioned, format them precisely. Where data is implied but not stated, add appropriate placeholders like [X%], [X/X trials], [as of Date].
+
+3. SECTION-SPECIFIC REQUIREMENTS:
+${sectionType === "plaafp" ? `- Begin with student's current performance levels
+   - Reference assessment data  
+   - Describe both strengths AND areas of need
+   - Connect needs to how disability impacts access to curriculum
+   - End with educational implications` : ""}
+${sectionType === "meeting_notes" ? `- Summarize discussion points objectively
+   - Note decisions made and next steps
+   - Use passive/neutral voice for disagreements
+   - Include parent input acknowledgment` : ""}
+${sectionType === "esy_narrative" ? `- Address the three ESY criteria: regression, recoupment, nature/severity
+   - Use predictive language about regression risk
+   - Reference specific skills at risk
+   - Cite break duration if mentioned` : ""}
+${sectionType === "access_implementation" ? `- Describe accommodations in terms of access, not modification unless noted
+   - Use action verbs: "Student will receive...", "Access will be provided via..."
+   - Reference specific subject areas` : ""}
+${sectionType === "assessment_observations" ? `- Use past tense for observations
+   - Note student demeanor, effort, and engagement
+   - Describe testing conditions and any deviations
+   - Separate behavioral observations from performance data` : ""}
+${sectionType === "annual_goal" ? `- State the baseline performance level
+   - Describe the rationale for the selected goal
+   - Connect to grade-level standards or functional skills
+   - Use measurable, observable language` : ""}
+
+4. FLDOE/PEER PORTAL COMPLIANCE: Avoid first-person teacher voice. Use third-person objective. No subjective opinions without data support.
+
+Write ONLY the finished narrative. No preamble, no labels, no markdown formatting. Plain professional prose, 2-4 paragraphs appropriate for an IEP document.`;
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      model: "claude_sonnet_4_6",
+    });
+
+    setDraft(typeof res === "string" ? res : res?.content || "");
+    setGenerating(false);
+  }
+
+  async function handleQuickAction(actionId) {
+    if (!draft.trim()) return;
+    setRefining(actionId);
+
+    const prompts = {
+      professionalize: `You are an IEP compliance expert. Rewrite the following IEP narrative to be MORE formal, objective, and legally precise. Remove any remaining informal phrasing. Increase professional tone throughout. Return ONLY the rewritten text, no labels:\n\n"${draft}"`,
+      add_data: `You are an IEP data specialist. Review this IEP narrative and insert appropriate data placeholders where quantitative evidence is implied but not yet present. Use formats like [X%], [X out of X trials], [as of MM/YYYY], [X WCPM], [X DCPM]. Do NOT remove any existing data. Return ONLY the updated narrative:\n\n"${draft}"`,
+      condense: `You are an IEP portal specialist. Condense this IEP narrative to under 500 characters while retaining the most critical data points and professional language. This is for a character-limited portal field. Return ONLY the condensed text:\n\n"${draft}"`,
+    };
+
+    const res = await base44.integrations.Core.InvokeLLM({ prompt: prompts[actionId] });
+    setDraft(typeof res === "string" ? res : res?.content || draft);
+    setRefining("");
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(draft).then(() => {
+      setCopied(true);
+      toast.success("Narrative copied to clipboard!");
+      setTimeout(() => setCopied(false), 2500);
+    });
+  }
+
+  async function handleSave() {
+    if (!draft.trim()) return;
+    setSaving(true);
+
+    await base44.entities.Activity.create({
+      title: `IEP ${sectionLabel}${selectedStudent ? ` — ${selectedStudent.name}` : ""}`,
+      type: "Report",
+      grade: selectedStudent?.grade || "",
+      subject: "General",
+      content: draft,
+      source_tool: "IEP Narrative Assistant",
+    });
+
+    // Also save to localStorage for the student
+    if (selectedStudent) {
+      const key = `iep_narratives_${selectedStudent.id}`;
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      existing.unshift({ section: sectionLabel, draft, date: new Date().toISOString().slice(0, 10) });
+      localStorage.setItem(key, JSON.stringify(existing.slice(0, 20)));
+    }
+
+    setSaving(false);
+    setSaved(true);
+    toast.success("Lesson saved successfully.");
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header Card */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: NAVY }}>📋</div>
+          <div>
+            <h2 className="font-display font-bold text-xl" style={{ color: NAVY }}>IEP Narrative Assistant</h2>
+            <p className="text-sm text-muted-foreground">Brain-dump your observations → Professional IEP language</p>
+          </div>
+        </div>
+
+        {/* PEER Portal badge */}
+        <div className="flex items-center gap-2 mb-5 p-3 rounded-xl text-xs" style={{ background: `${SAGE}12`, border: `1px solid ${SAGE}40` }}>
+          <span className="text-base">🏛️</span>
+          <div>
+            <span className="font-bold" style={{ color: NAVY }}>FLDOE PEER Portal Compatible</span>
+            <span className="text-muted-foreground ml-1">— Output is formatted for direct paste into state IEP systems</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+          {/* Student */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Student (Optional)</Label>
+            <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue placeholder="— Select student —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={null}>— No student selected —</SelectItem>
+              {students.map(s => (
+  <SelectItem key={s.id} value={s.id}>
+    {s.nickname || s.name || "Unnamed"} ({s.grade || "N/A"})
+  </SelectItem>
+))} 
+              </SelectContent>
+            </Select>
+            {selectedStudent && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+             {selectedStudent.category && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${NAVY}10`, color: NAVY }}>{selectedStudent.category}</span>}
+{selectedStudent.status && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${SAGE}20`, color: NAVY }}>{selectedStudent.status}</span>}
+                {selectedStudent.status && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${SAGE}20`, color: NAVY }}>{selectedStudent.status}</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Section Type */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">IEP Section</Label>
+            <Select value={sectionType} onValueChange={v => { setSectionType(v); setDraft(""); setSaved(false); }}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SECTION_TYPES.map(s => (
+                  <SelectItem key={s.value} value={s.value}>
+                    <div>
+                      <p className="font-medium">{s.label}</p>
+                      <p className="text-xs text-muted-foreground">{s.description}</p>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Raw Notes */}
+        <div className="space-y-2 mb-5">
+          <Label className="text-sm font-semibold">Raw Observations / Notes</Label>
+          <p className="text-xs text-muted-foreground -mt-1">Type your "brain dump" — bullet points, shorthand, informal notes, anything goes.</p>
+          <textarea
+            value={rawNotes}
+            onChange={e => setRawNotes(e.target.value)}
+            placeholder={"Examples:\n• Got upset when asked to switch tasks\n• Can read 3rd grade stuff ok but struggles with inferencing\n• Mom said he's been refusing homework\n• Really good at math facts, weak on word problems\n• Needs reminders to stay on task, usually 2-3 per period"}
+            rows={6}
+            className="w-full rounded-xl border border-border/60 px-4 py-3 text-sm resize-none outline-none font-inter leading-relaxed"
+            onFocus={e => e.target.style.borderColor = NAVY}
+            onBlur={e => e.target.style.borderColor = ""}
+          />
+        </div>
+
+        <div className="flex justify-between items-center flex-wrap gap-3">
+          <p className="text-xs text-muted-foreground">Uses Claude Sonnet for highest-quality legal language</p>
+          <div className="flex gap-2">
+            {draft && (
+              <Button onClick={() => { setDraft(""); setSaved(false); }} variant="outline" className="rounded-full gap-2 text-sm">
+                <RefreshCw className="w-3.5 h-3.5" /> Clear Draft
+              </Button>
+            )}
+            <Button onClick={handleGenerate} disabled={generating || !rawNotes.trim()}
+              className="rounded-full px-6 gap-2 text-white" style={{ backgroundColor: NAVY }}>
+              {generating
+                ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Drafting…</>
+                : <><Sparkles className="w-4 h-4" /> Generate Draft</>}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {!draft && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-14 px-6 text-center">
+          <div className="text-5xl mb-4">📋</div>
+          <h3 className="font-display font-semibold text-lg mb-2" style={{ color: NAVY }}>Ready to draft</h3>
+          <p className="text-sm text-muted-foreground max-w-sm">Enter your raw classroom observations above. The AI will transform them into professional, IDEA-compliant IEP language in seconds.</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {generating && (
+        <div className="bg-white rounded-2xl p-10 border border-border/50 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 rounded-full animate-spin" style={{ borderColor: `${NAVY}20`, borderTopColor: NAVY }} />
+          <div className="text-center">
+            <p className="text-sm font-semibold" style={{ color: NAVY }}>Transforming your notes…</p>
+            <p className="text-xs text-muted-foreground mt-1">Applying FLDOE compliance standards</p>
+          </div>
+        </div>
+      )}
+
+      {/* Draft Output */}
+      {draft && !generating && (
+        <div className="bg-white rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+          {/* Draft header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border/30" style={{ background: `${NAVY}06` }}>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: NAVY }}>
+                {sectionLabel} {selectedStudent ? `— ${selectedStudent.name}` : ""}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">{charCount} characters · {Math.ceil(charCount / 5)} approx. words</p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleCopy}
+                className="rounded-full gap-2 text-sm h-8 px-3 transition-all"
+                style={{ backgroundColor: copied ? SAGE : "#F8FAFC", color: copied ? "white" : NAVY, border: `1px solid ${copied ? SAGE : "#E2E8F0"}` }}>
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? "Copied!" : "Copy for PEER Portal"}
+              </Button>
+              <Button onClick={handleSave} disabled={saving || saved}
+                className="rounded-full gap-2 text-sm h-8 px-3 text-white"
+                style={{ backgroundColor: saved ? SAGE : "#D6006E" }}>
+                <BookmarkPlus className="w-3.5 h-3.5" />{saving ? "Saving…" : saved ? "Saved! ✅" : "Save"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Narrative text */}
+          <div className="p-6">
+            <textarea
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              className="w-full text-sm leading-relaxed resize-none outline-none font-inter"
+              style={{ minHeight: 220, color: NAVY, lineHeight: 1.9, fontFamily: "var(--font-inter)" }}
+              rows={10}
+            />
+          </div>
+
+          {/* Quick Actions */}
+          <div className="px-6 pb-6">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">Smart Adjustments</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {QUICK_ACTIONS.map(action => (
+                <button key={action.id}
+                  onClick={() => handleQuickAction(action.id)}
+                  disabled={!!refining}
+                  className="flex items-start gap-3 p-3 rounded-xl border text-left transition-all hover:border-navy disabled:opacity-50"
+                  style={{
+                    borderColor: refining === action.id ? NAVY : "#E2E8F0",
+                    background: refining === action.id ? `${NAVY}06` : "white",
+                  }}>
+                  <span className="text-xl shrink-0">{action.icon}</span>
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: NAVY }}>
+                      {refining === action.id ? "Applying…" : action.label}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{action.desc}</p>
+                  </div>
+                  {refining === action.id && (
+                    <div className="ml-auto w-3.5 h-3.5 border-2 rounded-full animate-spin shrink-0" style={{ borderColor: `${NAVY}30`, borderTopColor: NAVY }} />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Portal tip */}
+          <div className="mx-6 mb-6 p-3 rounded-xl text-xs flex items-start gap-2" style={{ background: `${SAGE}10`, border: `1px solid ${SAGE}40` }}>
+            <span>💡</span>
+            <p style={{ color: NAVY }}>
+              <strong>PEER Portal tip:</strong> Click "Copy for PEER Portal" to copy plain text without formatting. Paste directly into the narrative field in the FLDOE IEP system. Use "Condense for Portal" if the field has a character limit.
+            </p>
+</div>
+        </div>
+      )}
+    </div>
+  ); // This closes the return
+} // This closes the function. DELETE EVERYTHING AFTER THIS LINE.
