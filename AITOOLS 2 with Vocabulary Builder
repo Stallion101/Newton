@@ -1,0 +1,203 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Sparkles, 
+  Search, 
+  ChevronRight 
+} from "lucide-react";
+import PageHeader from "../components/shared/PageHeader";
+
+// ——————————————————————————————————————————————————————————————————————————————————————
+// TOOL COMPONENT IMPORTS
+// ——————————————————————————————————————————————————————————————————————————————————————
+import ParagraphShrinking from "../components/tools/ParagraphShrinking";
+import VocabularyBuilder from "@/components/tools/VocabularyBuilder";
+import IEPNarrativeAssistant from "../components/tools/IEPNarrativeAssistant";
+import ColorByWordActivity from "../components/tools/sightword/ColorByWordActivity";
+import TouchPointMathLab from "../components/tools/TouchPointMathLab";
+import DecodableAgent from "./DecodableAgent";
+import VisualVocalPhonicsLab from "../components/tools/VisualVocalPhonicsLab"; 
+import ElkoninBoxLogic from "../components/tools/ElkoninBoxesGenerator"; 
+import SyllableStudio from "../components/tools/SyllableStudio";
+import SocialStoryCreator from "../components/tools/SocialStoryCreator";
+import ABAToolkit from "../components/tools/ABAToolkit";
+import DramaScriptGenerator from "../components/tools/DramaScriptGenerator";
+import OrganizerArchitect from "../components/tools/OrganizerArchitect";
+
+// ——————————————————————————————————————————————————————————————————————————————————————
+// TOOLS CONFIGURATION (22 TOOLS)
+// ——————————————————————————————————————————————————————————————————————————————————————
+const TOOLS = [
+  // ——— THE PHONICS LAB (6) ———
+  { id: "visualvocal", label: "Visual Vocal Phonics", category: "Lab", description: "Visual and vocal cues for phonetic instruction." },
+  { id: "vocabulary", label: "Vocabulary Lab", category: "Lab", description: "Contextual vocabulary builder and semantic mapper." }, 
+  { id: "decodable", label: "Decodable Text Generator", category: "Lab", description: "Generate phonetic texts based on specific patterns." },
+  { id: "sightword", label: "Sight Word Generator", category: "Lab", description: "Create customized high-frequency word lists." },
+  { id: "colorbyword", label: "Sight Word Mastery", category: "Lab", description: "Assess student progress on high-frequency words." },
+  { id: "syllable", label: "Syllable Studio", category: "Lab", description: "Break down complex words for phonetic mastery." },
+
+  // ——— COGNITIVE ARCHITECT (4) ———
+  { id: "inference", label: "Inference Detective", category: "Cognitive", description: "Evidence-based reasoning and drawing conclusions." },
+  { id: "mentalmovie", label: "Mental Movie Director", category: "Cognitive", description: "Visualization strategies for deeper reading engagement." },
+  { id: "signalword", label: "Signal Word Predictor", category: "Cognitive", description: "Identify text structure through transition signals." },
+  { id: "meaningthief", label: "Meaning Thief", category: "Cognitive", description: "Context-clue strategy for uncovering unknown word meanings." },
+
+  // ——— NUMERACY WING (4) ———
+  { id: "math", label: "Touch-Point Math Lab", category: "Numeracy", description: "Tier 2/3 multi-sensory math strategies." },
+  { id: "cbm", label: "Math CBM Generator", category: "Numeracy", description: "Create curriculum-based measurement probes." },
+  { id: "worksheetlab", label: "Math Worksheet Lab", category: "Numeracy", description: "Generate scaffolded math practice sets." },
+  { id: "factfluency", label: "Fact Fluency Engine", category: "Numeracy", description: "Automated basic operation drills and tracking." },
+
+  // ——— SKILL BUILDERS (4) ———
+  { id: "elkonin", label: "Elkonin Box Builder", category: "Skills", description: "Phonemic awareness mapping tools." },
+  { id: "paragraph", label: "Paragraph Shrinking", category: "Skills", description: "Summarization tool for reading comprehension." },
+  { id: "aba", label: "ABA Toolkit", category: "Skills", description: "Data collection and behavior intervention tools." },
+  { id: "socialstory", label: "Social Story Lab", category: "Skills", description: "Custom social narratives for behavioral support." },
+
+  // ——— TEACHER WORKSPACE (4) ———
+  { id: "iep", label: "IEP Narrative Assistant", category: "Admin", description: "AI-assisted drafting for PLAAFPs and goal narratives." },
+  { id: "parentemail", label: "Parent Email Pro", category: "Admin", description: "Draft professional, data-driven family communications." },
+  { id: "organizer", label: "Organizer Architect", category: "Admin", description: "Streamline classroom and IEP documentation." },
+  { id: "drama", label: "Drama Script Lab", category: "Admin", description: "Integrate performing arts with literacy lessons." }
+];
+
+const TOOL_COMPONENTS = {
+  decodable: DecodableAgent,
+  visualvocal: VisualVocalPhonicsLab,
+  vocabulary: VocabularyBuilder,
+  elkonin: ElkoninBoxLogic,
+  syllable: SyllableStudio,
+  paragraph: ParagraphShrinking,
+  socialstory: SocialStoryCreator,
+  aba: ABAToolkit,
+  iep: IEPNarrativeAssistant,
+  drama: DramaScriptGenerator,
+  math: TouchPointMathLab,
+  organizer: OrganizerArchitect,
+  colorbyword: ColorByWordActivity
+};
+
+export default function AITools() {
+  const [activeTool, setActiveTool] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const categoryStyles = {
+    Lab: { name: "Phonics Lab", bg: "bg-emerald-50", text: "text-emerald-600", border: "group-hover:border-emerald-200" },
+    Cognitive: { name: "Cognitive Architect", bg: "bg-purple-50", text: "text-purple-600", border: "group-hover:border-purple-200" },
+    Numeracy: { name: "Numeracy Wing", bg: "bg-orange-50", text: "text-orange-600", border: "group-hover:border-orange-200" },
+    Skills: { name: "Skill Builders", bg: "bg-blue-50", text: "text-blue-600", border: "group-hover:border-blue-200" },
+    Admin: { name: "Teacher Workspace", bg: "bg-slate-100", text: "text-slate-600", border: "group-hover:border-slate-300" }
+  };
+
+  const filteredTools = TOOLS.filter(tool =>
+    tool.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    tool.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // VIEW: Individual Tool Active
+  if (activeTool) {
+    const Component = TOOL_COMPONENTS[activeTool];
+    return (
+      <div className="min-h-screen bg-[#F8FAFA]">
+        <div className="max-w-7xl mx-auto p-4">
+          <Button 
+            variant="ghost" 
+            onClick={() => setActiveTool(null)}
+            className="mb-6 text-slate-500 hover:text-[#86A789]"
+          >
+            ← Back to Newton Lab
+          </Button>
+          {Component ? <Component /> : (
+            <div className="p-20 text-center bg-white rounded-[3rem] border border-slate-100 shadow-sm">
+              <h2 className="text-xl font-black text-slate-800 uppercase mb-2">Module Under Construction</h2>
+              <p className="text-slate-500">The {activeTool} logic is currently being finalized.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // VIEW: Main Dashboard
+  return (
+    <div className="p-8 max-w-7xl mx-auto space-y-16 bg-[#F8FAFA] min-h-screen">
+      <PageHeader 
+        title="Newton Lab" 
+        subtitle="22 Specialized AI Instructional Modules"
+      />
+
+      {/* SEARCH */}
+      <div className="relative max-w-xl mx-auto">
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
+        <input
+          type="text"
+          placeholder="Search tools or categories..."
+          className="w-full pl-14 pr-6 py-4 bg-white border border-slate-100 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-[#86A789]/10 shadow-sm transition-all"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      {/* RENDER BY CATEGORY */}
+      {Object.keys(categoryStyles).map(catKey => {
+        const toolsInSection = filteredTools.filter(t => t.category === catKey);
+        if (toolsInSection.length === 0) return null;
+        const style = categoryStyles[catKey];
+
+        return (
+          <div key={catKey} className="space-y-8">
+            <div className="flex items-center gap-4 border-b border-slate-100 pb-4">
+              <span className={`px-4 py-1.5 ${style.bg} ${style.text} rounded-full text-[10px] font-black uppercase tracking-[0.2em]`}>
+                {style.name}
+              </span>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">{catKey}</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {toolsInSection.map((tool) => (
+                <button
+                  key={tool.id}
+                  onClick={() => setActiveTool(tool.id)}
+                  className={`group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between hover:-translate-y-1 ${style.border}`}
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors">
+                        <Sparkles className="h-5 w-5 text-slate-200 group-hover:text-[#86A789]" />
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-black text-slate-800 mb-2 leading-tight uppercase tracking-tight">
+                      {tool.label}
+                    </h3>
+                    <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                      {tool.description}
+                    </p>
+                  </div>
+                  <div className={`mt-8 flex items-center font-bold text-xs uppercase tracking-widest ${style.text}`}>
+                    Launch <ChevronRight className="ml-1 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Button({ children, onClick, className, variant }) {
+  return (
+    <button 
+      onClick={onClick} 
+      className={`px-6 py-2.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
+        variant === 'ghost' ? 'hover:bg-slate-100' : 'bg-[#86A789] text-white shadow-sm'
+      } ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+
+
+
