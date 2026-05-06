@@ -1,0 +1,382 @@
+import { useState } from "react";
+import { Sparkles, BookOpen, ChevronLeft, ChevronRight, Printer, BookmarkPlus, Check, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+const NAVY = "#1A2B3C";
+const SAGE = "#76B5B3";
+const GRADES = ["Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
+
+export default function VocabularyBuilder() {
+  const [grade, setGrade] = useState("Grade 3");
+  const [theme, setTheme] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [words, setWords] = useState(null);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+useEffect(() => {
+    async function purgeGhosts() {
+      const list = await base44.entities.Student.list();
+      // Finding the specific sample names that keep appearing
+      const ghosts = list.filter(s => 
+        ["Sofia Ramirez", "Liam Okonkwo", "Gregory McCallumpoots"].includes(s.name)
+      );
+
+      if (ghosts.length > 0) {
+        await Promise.all(ghosts.map(g => base44.entities.Student.delete(g.id)));
+        toast.success("Ghost students purged!");
+      }
+    }
+    purgeGhosts();
+  }, []);
+  async function handleGenerate() {
+    if (!theme.trim()) { toast.error("Please enter a weekly focus theme."); return; }
+    setGenerating(true);
+    setWords(null);
+    setCurrentIdx(0);
+    setAnswers({});
+    setSaved(false);
+
+    const prompt = `You are an elementary literacy specialist. Generate 5 Tier-2 vocabulary words (high-utility, cross-curricular words like "emerge", "structure", "resilient", "observe", "transform") for a ${grade} student studying the theme: "${theme}". Choose words that are appropriately challenging for ${grade} and genuinely useful across subjects.
+
+For each word, provide:
+1. A simple, student-friendly definition (1 sentence, age-appropriate for ${grade})
+2. A short, engaging context paragraph (4-6 sentences) themed around "${theme}" where the target word appears ONCE in context. Write at ${grade} reading level.
+3. A multiple-choice comprehension question with 4 answer choices (A, B, C, D) and the correct answer letter.
+
+Return ONLY a valid JSON object, no markdown, no extra text:
+{
+  "words": [
+    {
+      "word": "habitat",
+      "definition": "A habitat is the natural home where a plant or animal lives.",
+      "paragraph": "Deep in the forest, a family of foxes had found the perfect habitat. The tall trees gave them shade from the hot sun. A stream nearby provided fresh water to drink. The foxes dug a cozy den under the roots of an old oak tree. This habitat had everything the fox family needed to survive.",
+      "question": "What does the word habitat mean in this story?",
+      "choices": { "A": "A type of food animals eat", "B": "The natural home where animals live", "C": "A kind of tree in the forest", "D": "A stream or river" },
+      "correct": "B"
+    }
+  ]
+}`;
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          words: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                word: { type: "string" },
+                definition: { type: "string" },
+                paragraph: { type: "string" },
+                question: { type: "string" },
+                choices: { type: "object" },
+                correct: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    setWords(res?.words || []);
+    setGenerating(false);
+  }
+
+  function handleAnswer(wordIdx, choice) {
+    if (answers[wordIdx] !== undefined) return;
+    const isCorrect = choice === words[wordIdx].correct;
+    setAnswers(prev => ({ ...prev, [wordIdx]: choice }));
+
+    if (isCorrect) {
+      toast.success("Correct! 🎉", { style: { background: SAGE, color: "white" } });
+      // Track to localStorage analytics
+      const vocab = JSON.parse(localStorage.getItem("vocab_mastery") || "[]");
+      vocab.push({ date: new Date().toISOString().slice(0, 10), word: words[wordIdx].word, theme, grade });
+      localStorage.setItem("vocab_mastery", JSON.stringify(vocab));
+    }
+  }
+
+  async function handleSave() {
+    if (!words) return;
+    setSaving(true);
+    const content = words.map(w =>
+      `WORD: ${w.word}\nDEFINITION: ${w.definition}\n\nPARAGRAPH:\n${w.paragraph}\n\nCOMPREHENSION: ${w.question}\nA) ${w.choices.A}  B) ${w.choices.B}  C) ${w.choices.C}  D) ${w.choices.D}\nAnswer: ${w.correct}`
+    ).join("\n\n---\n\n");
+
+    await base44.entities.Activity.create({
+      title: `Vocabulary: ${theme} (${grade})`,
+      type: "Lesson",
+      grade,
+      subject: "ELA",
+      content,
+      source_tool: "Vocabulary Builder",
+    });
+    setSaving(false);
+    setSaved(true);
+    toast.success("Success! This resource is now available in your Skill Builders library.");
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  function handlePrint() {
+    window.print();
+  }
+
+  const wordObj = words?.[currentIdx];
+  const mastered = Object.values(answers).filter((a, i) => words && a === words[i]?.correct).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Setup Card */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: NAVY }}>
+            <BookOpen className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl" style={{ color: NAVY }}>Context-Clue Vocabulary Lab</h2>
+            <p className="text-sm text-muted-foreground">Generate theme-aligned Tier-2 vocabulary lessons in seconds</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Grade Level</Label>
+            <Select value={grade} onValueChange={setGrade}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue /></SelectTrigger>
+              <SelectContent>{GRADES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Weekly Focus Theme</Label>
+            <Input
+              placeholder="e.g. Ecosystems, Ancient Egypt, Space…"
+              value={theme}
+              onChange={e => setTheme(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !generating && handleGenerate()}
+              className="rounded-xl border-border/60"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          {words && (
+            <Button onClick={() => { setWords(null); setAnswers({}); setCurrentIdx(0); }} variant="outline" className="rounded-full">
+              Reset
+            </Button>
+          )}
+          <Button onClick={handleGenerate} disabled={generating} className="rounded-full px-6 gap-2" style={{ backgroundColor: NAVY, color: "white", minHeight: 44 }}>
+            {generating
+              ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating…</>
+              : <><Sparkles className="w-4 h-4" /> Generate Lesson</>}
+          </Button>
+        </div>
+      </div>
+
+      {/* Empty State */}
+      {!words && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: `${NAVY}15` }}>
+            <BookOpen className="w-8 h-8" style={{ color: NAVY }} />
+          </div>
+          <h3 className="font-display font-semibold text-lg mb-2" style={{ color: NAVY }}>Ready to build vocabulary</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">Pick a grade and theme above to generate 5 context-rich vocabulary words with comprehension checks.</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {generating && (
+        <div className="bg-white rounded-2xl p-10 shadow-sm border border-border/50 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 rounded-full animate-spin" style={{ borderColor: `${NAVY}20`, borderTopColor: NAVY }} />
+          <p className="text-sm text-muted-foreground">Generating vocabulary lesson for <strong>{theme}</strong>…</p>
+        </div>
+      )}
+
+      {/* Learning Lab */}
+      {words && words.length > 0 && (
+        <>
+          {/* Progress + Actions */}
+          <div className="flex items-center justify-between flex-wrap gap-3 no-print">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold" style={{ color: NAVY }}>Word {currentIdx + 1} of {words.length}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: `${SAGE}20`, color: SAGE }}>
+                {mastered} Mastered ✓
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSave} disabled={saving || saved} className={`rounded-full gap-2 text-white shadow-md transition-all ${saved ? "" : ""}`}
+                style={{ backgroundColor: saved ? SAGE : "#D6006E", minHeight: 40 }}>
+                <BookmarkPlus className="w-4 h-4" />{saving ? "Saving…" : saved ? "Saved! ✅" : "Add to Skill Builders"}
+              </Button>
+              <Button onClick={handlePrint} variant="outline" className="rounded-full gap-2" style={{ minHeight: 40 }}>
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+            </div>
+          </div>
+
+          {/* Word Slideshow Card */}
+          <div className="vocab-print-root bg-white rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+            {/* Nav */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border/30 no-print">
+              <button
+                onClick={() => setCurrentIdx(i => Math.max(0, i - 1))}
+                disabled={currentIdx === 0}
+                className="p-2 rounded-lg disabled:opacity-30 hover:bg-muted/50 transition-colors"
+              ><ChevronLeft className="w-5 h-5" /></button>
+
+              <div className="flex gap-1.5">
+                {words.map((_, i) => (
+                  <button key={i} onClick={() => setCurrentIdx(i)}
+                    className="w-2.5 h-2.5 rounded-full transition-colors"
+                    style={{ backgroundColor: i === currentIdx ? NAVY : "#CBD5E0" }}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentIdx(i => Math.min(words.length - 1, i + 1))}
+                disabled={currentIdx === words.length - 1}
+                className="p-2 rounded-lg disabled:opacity-30 hover:bg-muted/50 transition-colors"
+              ><ChevronRight className="w-5 h-5" /></button>
+            </div>
+
+            {/* Word Content */}
+            {wordObj && <WordCard wordObj={wordObj} wordIdx={currentIdx} answers={answers} onAnswer={handleAnswer} />}
+          </div>
+
+          {/* Print — all words */}
+          <div className="vocab-print-all hidden">
+            <div className="print-header" style={{ marginBottom: 24 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: NAVY }}>Vocabulary: {theme} ({grade})</h1>
+              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Name: _________________________ Date: _____________</p>
+            </div>
+            {words.map((w, i) => (
+              <PrintWord key={i} wordObj={w} num={i + 1} />
+            ))}
+          </div>
+        </>
+      )}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+        .vocab-story { font-family: 'Comic Neue', 'Comic Sans MS', cursive; line-height: 2.2; font-size: 1rem; }
+
+        @media print {
+          body * { visibility: hidden !important; }
+          .vocab-print-root, .vocab-print-root * { visibility: visible !important; }
+          .vocab-print-all, .vocab-print-all * { visibility: visible !important; display: block !important; }
+          .vocab-print-root {
+            position: absolute !important; top: 0 !important; left: 0 !important;
+            width: 100% !important; padding: 0.5in !important;
+            border: none !important; border-radius: 0 !important;
+            box-shadow: none !important; background: white !important;
+          }
+          .no-print { display: none !important; }
+          nav, header, aside, footer, button, [data-radix-popper-content-wrapper] { display: none !important; }
+          @page { margin: 0.5in; size: letter; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function WordCard({ wordObj, wordIdx, answers, onAnswer }) {
+  const NAVY = "#1A2B3C";
+  const SAGE = "#76B5B3";
+  const answered = answers[wordIdx];
+  const isCorrect = answered === wordObj.correct;
+
+  // Bold the vocabulary word in the paragraph (case-insensitive), strip markdown artifacts
+  function renderParagraph(text, word) {
+    const clean = text.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "");
+    const regex = new RegExp(`(${word})`, "gi");
+    const parts = clean.split(regex);
+    return parts.map((part, i) =>
+      part.toLowerCase() === word.toLowerCase()
+        ? <strong key={i} style={{ color: SAGE, fontWeight: 700 }}>{part}</strong>
+        : part
+    );
+  }
+
+  return (
+    <div className="p-6 sm:p-8">
+      {/* Word + Definition */}
+      <div className="mb-6">
+        <h2 className="font-display font-bold text-4xl mb-3" style={{ color: NAVY }}>{wordObj.word}</h2>
+        <div className="p-4 rounded-xl" style={{ background: `${NAVY}08`, borderLeft: `4px solid ${NAVY}` }}>
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">Definition</p>
+          <p className="text-base font-medium" style={{ color: NAVY }}>{wordObj.definition}</p>
+        </div>
+      </div>
+
+      {/* Context Paragraph */}
+      <div className="mb-8" style={{ paddingTop: 40 }}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Read the Story</p>
+        <div className="p-5 rounded-xl bg-muted/20 border border-border/40">
+          <p className="vocab-story text-foreground" style={{ lineHeight: 2.5 }}>{renderParagraph(wordObj.paragraph, wordObj.word)}</p>
+        </div>
+      </div>
+
+      {/* Comprehension Check */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Check for Understanding</p>
+        <p className="font-semibold text-base mb-4" style={{ color: NAVY }}>{wordObj.question}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {Object.entries(wordObj.choices).map(([letter, text]) => {
+            const isThisCorrect = letter === wordObj.correct;
+            const isThisChosen = answered === letter;
+            let style = { border: "2px solid #E2E8F0", color: NAVY, background: "white" };
+            if (answered) {
+              if (isThisCorrect) style = { border: `2px solid ${SAGE}`, color: SAGE, background: `${SAGE}12` };
+              else if (isThisChosen && !isThisCorrect) style = { border: "2px solid #E53E3E", color: "#E53E3E", background: "#FFF5F5" };
+            }
+            return (
+              <button
+                key={letter}
+                onClick={() => onAnswer(wordIdx, letter)}
+                disabled={!!answered}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:opacity-90 disabled:cursor-default"
+                style={{ ...style, minHeight: 48 }}
+              >
+                <span className="font-bold text-sm shrink-0">{letter}.</span>
+                <span className="text-sm">{text}</span>
+                {answered && isThisCorrect && <Check className="w-4 h-4 ml-auto shrink-0" style={{ color: SAGE }} />}
+                {isThisChosen && !isThisCorrect && <X className="w-4 h-4 ml-auto shrink-0 text-red-500" />}
+              </button>
+            );
+          })}
+        </div>
+        {answered && !isCorrect && (
+          <p className="mt-3 text-sm p-3 rounded-xl" style={{ background: "#FFF8E1", color: "#92610A", border: "1px solid #F6C84B" }}>
+            💡 Hint: Re-read the story and look for clues around the bold word.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrintWord({ wordObj, num }) {
+  const NAVY = "#1A2B3C";
+  const SAGE = "#76B5B3";
+  return (
+    <div style={{ pageBreakInside: "avoid", marginBottom: 32, paddingBottom: 24, borderBottom: "1px solid #eee" }}>
+      <p style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>Word {num}</p>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: NAVY, marginBottom: 6 }}>{wordObj.word}</h2>
+      <p style={{ fontSize: 13, marginBottom: 16, color: "#333" }}><strong>Definition:</strong> {wordObj.definition}</p>
+      <p style={{ fontFamily: "'Comic Neue', cursive", fontSize: 13, lineHeight: 2.5, marginBottom: 24 }}>{wordObj.paragraph}</p>
+      <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Use this word in your own sentence:</p>
+      <div className="writing-line-container" style={{ paddingTop: "8px" }}>
+        {[0,1,2,3,4,5,6,7].map(n => <div key={n} className="writing-line" />)}
+      </div>
+    </div>
+  );
+}
