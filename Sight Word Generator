@@ -1,0 +1,506 @@
+import { useState, useMemo } from "react";
+import { Search, Sparkles, RefreshCw, BookmarkPlus, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+import TraceableSentences from "./sightword/TraceableSentences";
+import ColorByWordActivity from "./sightword/ColorByWordActivity";
+
+const ACTIVITY_TYPES = ["Search & Find", "Color by Word", "Trace & Build", "Traceable Sentences"];
+const GRADES = ["Pre-K", "Kindergarten", "Grade 1", "Grade 2"];
+
+const QUICK_FILL_WORDS = {
+  "Pre-K": ["the", "a", "I", "in", "is", "it", "to", "and"],
+  "Kindergarten": ["the", "of", "and", "a", "to", "in", "is", "you"],
+  "Grade 1": ["he", "was", "for", "on", "are", "as", "with", "his"],
+  "Grade 2": ["after", "again", "air", "also", "animal", "another", "any", "around"],
+  "Grade 3": ["above", "add", "almost", "along", "always", "began", "been", "before"],
+};
+
+export default function SightWordGenerator() {
+  const [wordList, setWordList] = useState("");
+  const [interest, setInterest] = useState("");
+  const [activityType, setActivityType] = useState("Search & Find");
+  const [grade, setGrade] = useState("Kindergarten");
+  const [result, setResult] = useState(null);
+  const [traceableSentences, setTraceableSentences] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [showHints, setShowHints] = useState(false);
+
+  const isTraceable = activityType === "Traceable Sentences";
+  const targetWords = useMemo(() => wordList.split(/[\n,]+/).map(w => w.trim().toLowerCase()).filter(Boolean), [wordList]);
+
+  async function handleGenerate() {
+    if (!wordList.trim() || !interest.trim()) {
+      toast.error("Please enter both a word list and a student interest.");
+      return;
+    }
+    setGenerating(true);
+    setResult(null);
+    setTraceableSentences(null);
+
+    const words = wordList.split(/[\n,]+/).map(w => w.trim()).filter(Boolean);
+
+    if (isTraceable) {
+      const prompt = `You are a literacy specialist creating a Traceable Sentences worksheet for a ${grade} student.
+
+Student Interest / Theme: "${interest}"
+Sight Words to include: ${words.join(", ")}
+
+Write EXACTLY 5 simple, short sentences (5–8 words each) themed around "${interest}".
+Each sentence must naturally include at least one of the target sight words.
+Keep vocabulary simple and concrete for ${grade}.
+
+Return ONLY a JSON object in this exact format (no markdown, no extra text):
+{
+  "title": "A fun, thematic worksheet title",
+  "emoji": "A single emoji that best represents ${interest} (e.g. 🚀 for space, 🦕 for dinosaurs, ⚽ for soccer)",
+  "sentences": [
+    "Sentence one here.",
+    "Sentence two here.",
+    "Sentence three here.",
+    "Sentence four here.",
+    "Sentence five here."
+  ]
+}`;
+
+      const res = await base44.integrations.Core.InvokeLLM({
+        prompt,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            emoji: { type: "string" },
+            sentences: { type: "array", items: { type: "string" } },
+          },
+        },
+      });
+      setTraceableSentences(res);
+      setGenerating(false);
+      return;
+    }
+
+    const activityInstructions = {
+      "Search & Find": `Write a short, engaging story (8–12 sentences) themed around "${interest}" for a ${grade} student. 
+Do NOT bold or mark the sight words in any way — write them as plain text identical to all other words. 
+After the story, add a section labeled WORD HUNT: and list each sight word on its own line using EXACTLY this format: [word]:  (I found it  times)
+For example: the:  (I found it  times)
+Use exactly one colon, two spaces after the colon, then the parenthetical phrase with a space before "times" for writing.`,
+      "Color by Word": `Create a "Color by Word" activity themed around "${interest}" for ${grade}.
+Write 6–8 short sentences or phrases, each containing one or more sight words.
+Assign a color name to each sight word. Only use these color names: red, blue, green, yellow, orange, purple, pink, teal.
+Format EXACTLY as follows (no extra text):
+COLOR KEY:
+[word] = [color name]
+[word] = [color name]
+(one per line for every sight word)
+SENTENCES:
+[sentence 1]
+[sentence 2]
+(plain text sentences, do NOT bold or highlight any words)`,
+      "Trace & Build": `Create a "Trace & Build" sight word activity themed around "${interest}" for ${grade}.
+For each word, provide:
+1. A short, fun sentence using that word in context of "${interest}"
+2. A trace prompt: "Trace it: [dotted word placeholder]"
+3. A build prompt: "Build it with tiles: [  ] [  ] [  ]" (boxes for each letter)
+Format each word as a clear block.`,
+    };
+
+    const prompt = `You are a literacy specialist creating a neurodiversity-friendly, interest-based sight word worksheet.
+
+Student Interest / Theme: "${interest}"
+Grade Level: ${grade}
+Sight Words: ${words.join(", ")}
+Activity Type: ${activityType}
+
+${activityInstructions[activityType]}
+
+Rules:
+- Keep language positive, simple, and affirming
+- Make the theme vivid and engaging — really lean into the "${interest}" world
+- Use high-frequency sight words naturally in context
+- Format cleanly so it's ready to print
+
+Start with: TITLE: [Creative, thematic worksheet title]
+Then the activity content.`;
+
+    const res = await base44.integrations.Core.InvokeLLM({ prompt });
+    const raw = typeof res === "string" ? res : res?.content || "";
+    // Strip markdown bold markers and heading markers
+    setResult(raw.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, ""));
+    setGenerating(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const words = wordList.split(/[\n,]+/).map(w => w.trim()).filter(Boolean);
+    const wordsLabel = words.slice(0, 4).join(", ") + (words.length > 4 ? "…" : "");
+
+    if (isTraceable && traceableSentences) {
+      await base44.entities.Activity.create({
+        title: `Sight Words: ${interest} (${wordsLabel})`,
+        type: "Worksheet",
+        grade,
+        subject: "ELA",
+        content: traceableSentences.sentences?.join("\n") || "",
+        source_tool: "Sight Word Generator",
+      });
+    } else if (result) {
+      await base44.entities.Activity.create({
+        title: `Sight Words: ${interest} (${wordsLabel})`,
+        type: "Worksheet",
+        grade,
+        subject: "ELA",
+        content: result,
+        source_tool: "Sight Word Generator",
+      });
+    }
+    setSaving(false);
+    setSaved(true);
+    toast.success("Success! This resource is now available in your Skill Builders library.");
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  function highlightSightWords(text) {
+    if (!showHints || targetWords.length === 0) return text;
+    // Split by word boundaries and wrap matching sight words with underline span
+    const pattern = new RegExp(`\\b(${targetWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+    const parts = text.split(pattern);
+    return parts.map((part, j) =>
+      targetWords.includes(part.toLowerCase())
+        ? <span key={j} style={{ textDecoration: "underline", textDecorationStyle: "dotted", textDecorationColor: "#9C27B0" }}>{part}</span>
+        : part
+    );
+  }
+
+  function renderResult(text) {
+    // Strip all markdown formatting symbols before rendering
+    const clean = text.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/_/g, "");
+    const lines = clean.split("\n");
+
+    return lines.map((line, i) => {
+      const trimmed = line.trim();
+      if (!trimmed) return <div key={i} className="h-3" />;
+
+      if (/^TITLE:/i.test(trimmed)) {
+        return <h2 key={i} className="font-bold text-2xl text-center mb-4" style={{ color: "#1A2B3C" }}>{trimmed.replace(/^TITLE:\s*/i, "")}</h2>;
+      }
+      if (/^(WORD HUNT|COLOR KEY|SENTENCES|REFLECTION):/i.test(trimmed)) {
+        return <h3 key={i} className="font-bold text-sm uppercase tracking-wide mt-5 mb-2 border-b border-border/40 pb-1" style={{ color: "#1A2B3C" }}>{trimmed}</h3>;
+      }
+
+      // Word Hunt entries: "word:  (I found it  times)" — render with styled spacing
+      if (/^[\w']+:\s+\(I found it\s+times\)$/i.test(trimmed)) {
+        const word = trimmed.split(":")[0];
+        return (
+          <p key={i} className="text-sm mb-1" style={{ lineHeight: "2.2", fontFamily: "inherit" }}>
+            <strong>{word}:</strong>{"  "}
+            <span style={{ color: "#555" }}>(I found it{"\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"}times)</span>
+          </p>
+        );
+      }
+
+      // Challenge line — wide-ruled writing lines
+      if (/^CHALLENGE:/i.test(trimmed)) {
+        return (
+          <div key={i} className="mt-6 mb-2" style={{ minHeight: "300px", paddingBottom: "100px" }}>
+            <p className="font-bold text-sm mb-4" style={{ color: "#1A2B3C" }}>{trimmed}</p>
+            {[0,1,2,3,4,5,6,7].map(n => (
+              <div key={n} className="writing-line" />
+            ))}
+          </div>
+        );
+      }
+
+      // Skip markdown horizontal rules
+      if (/^---+$/.test(trimmed) || /^\*\*\*+$/.test(trimmed)) {
+        return <div key={i} className="my-4 border-t border-blue-100" />;
+      }
+
+      // Trace it line — large legible font with generous letter-spacing
+      if (/^Trace it:/i.test(trimmed)) {
+        const word = trimmed.replace(/^Trace it:\s*/i, "").replace(/[\[\]]/g, "").trim();
+        return (
+          <div key={i} className="my-3">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">✏️ Trace it:</span>
+            <span className="trace-build-word">{word}</span>
+          </div>
+        );
+      }
+
+      // Build it with tiles — 60×60px boxes with thick border
+      if (/^Build it with tiles:/i.test(trimmed)) {
+        const raw = trimmed.replace(/^Build it with tiles:\s*/i, "");
+        const tiles = raw.match(/\[[\s\S]*?\]/g) || [];
+        return (
+          <div key={i} className="flex items-center flex-wrap gap-3 my-4">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">🧱 Build it:</span>
+            {tiles.map((t, j) => (
+              <div key={j} style={{ width: "60px", height: "60px", border: "2.5px solid #1A2B3C", borderRadius: "6px", background: "#FAFAFA" }} />
+            ))}
+            {tiles.length === 0 && <span className="text-muted-foreground text-sm">{raw}</span>}
+          </div>
+        );
+      }
+
+      // Word block header for Trace & Build (e.g. "Word: the" or "1. the")
+      if (activityType === "Trace & Build" && /^(word\s*\d*:|\d+\.)\s*/i.test(trimmed)) {
+        return (
+          <div key={i} className="mt-6 mb-2 pt-4 border-t-2 border-blue-100 first:border-t-0 first:pt-0 first:mt-0">
+            <p className="font-bold text-lg" style={{ color: "#1A2B3C" }}>{trimmed.replace(/^(word\s*\d*:|\d+\.)\s*/i, "")}</p>
+          </div>
+        );
+      }
+
+      // Passage text — conditionally highlight sight words
+      return <p key={i} className="text-sm mb-2" style={{ lineHeight: "2.2", letterSpacing: "0.05em" }}>{highlightSightWords(trimmed)}</p>;
+    });
+  }
+
+  const hasResult = isTraceable ? !!traceableSentences : !!result;
+
+  return (
+    <div className="space-y-6">
+      {/* Config */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-newton-green flex items-center justify-center">
+            <Search className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl text-newton-green">Interest-Based Sight Word Activity</h2>
+            <p className="text-sm text-muted-foreground">Turn any hobby into a literacy win</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Grade Level</Label>
+            <Select value={grade} onValueChange={setGrade}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue /></SelectTrigger>
+              <SelectContent>{GRADES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Activity Type</Label>
+            <Select value={activityType} onValueChange={(v) => { setActivityType(v); setResult(null); setTraceableSentences(null); }}>
+              <SelectTrigger className="rounded-xl border-border/60"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ACTIVITY_TYPES.map(a => (
+                  <SelectItem key={a} value={a}>
+                    {a === "Traceable Sentences" ? "✏️ Traceable Sentences" : a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Student Interest / Theme</Label>
+            <Input
+              placeholder="e.g. Dragons, Dinosaurs, Soccer, Space"
+              value={interest}
+              onChange={e => setInterest(e.target.value)}
+              className="rounded-xl border-border/60"
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Target Sight Words</Label>
+              <button
+                onClick={() => {
+                  const words = QUICK_FILL_WORDS[grade] || QUICK_FILL_WORDS["Kindergarten"];
+                  setWordList(words.join(", "));
+                }}
+                className="text-xs font-semibold px-3 py-1 rounded-full border border-newton-green/50 text-newton-green hover:bg-newton-green/10 transition-colors"
+              >
+                ⚡ Quick-Fill
+              </button>
+            </div>
+            <Textarea
+              placeholder={"the, and, is, a, to, in, was, he, for, on"}
+              value={wordList}
+              onChange={e => setWordList(e.target.value)}
+              className="rounded-xl border-border/60 h-20 resize-none"
+            />
+            <p className="text-xs text-muted-foreground">Separate words with commas or new lines</p>
+          </div>
+        </div>
+
+        {/* Difficulty toggle — only for passage-based modes */}
+        {!isTraceable && (
+          <div className="mb-5 p-3 bg-secondary/30 border border-border/40 rounded-xl flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Show Word Hints (Underline)</p>
+              <p className="text-xs text-muted-foreground">Dotted underlines help students locate sight words</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={showHints}
+              onClick={() => setShowHints(h => !h)}
+              className={`w-10 h-6 rounded-full transition-colors duration-200 relative shrink-0 ${showHints ? "bg-newton-purple" : "bg-border"}`}
+            >
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${showHints ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+        )}
+
+        {isTraceable && (
+          <div className="mb-5 p-3 bg-newton-green/5 border border-newton-green/20 rounded-xl flex items-start gap-2">
+            <span className="text-lg">✏️</span>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <strong className="text-foreground">Traceable Sentences mode:</strong> Generates 5 themed sentences rendered in a dashed traceable font on primary ruled lines — perfect for multi-sensory orthographic mapping.
+            </p>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3">
+          {hasResult && (
+            <Button onClick={handleGenerate} variant="outline" className="rounded-full border-newton-green/40 text-newton-green hover:bg-newton-green/10 gap-2">
+              <RefreshCw className="w-4 h-4" /> Regenerate
+            </Button>
+          )}
+          <Button onClick={handleGenerate} disabled={generating} className="rounded-full bg-newton-green hover:bg-newton-green/90 text-white shadow-md px-6 gap-2">
+            {generating ? (
+              <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
+            ) : (
+              <><Sparkles className="w-4 h-4" /> Generate Activity</>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {!hasResult && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-newton-green/10 flex items-center justify-center mb-4">
+            <Search className="w-8 h-8 text-newton-green" />
+          </div>
+          <h3 className="font-display font-semibold text-lg mb-2">Ready to build</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            {isTraceable
+              ? "Enter a student's interest and sight words to generate 5 traceable sentences on primary ruled lines."
+              : "Enter a student's interest and sight words, then generate a themed printable activity."}
+          </p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {generating && (
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-border/50 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-newton-green/20 border-t-newton-green rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">
+            {isTraceable ? "Writing traceable sentences…" : "Building your themed activity…"}
+          </p>
+        </div>
+      )}
+
+      {/* Traceable Result */}
+      {isTraceable && traceableSentences && !generating && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{grade}</span> ·
+              <span className="px-2 py-0.5 rounded-full bg-newton-green/10 text-newton-green text-xs font-semibold">✏️ Traceable Sentences</span> ·
+              <span className="text-foreground font-medium">{traceableSentences.emoji} {interest}</span>
+            </div>
+            <div className="flex gap-2 no-print">
+              <Button onClick={handleSave} disabled={saving || saved} className={`rounded-full text-white gap-2 shadow-md transition-all ${saved ? "bg-newton-green shadow-newton-green/25" : "bg-newton-pink hover:bg-newton-pink/90 shadow-newton-pink/25"}`}>
+                <BookmarkPlus className="w-4 h-4" />{saving ? "Saving..." : saved ? "Saved! ✅" : "Add to Skill Builders"}
+              </Button>
+              <Button onClick={() => window.print()} variant="outline" className="rounded-full gap-2 border-newton-green/60 text-newton-green hover:bg-newton-green/10">
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+            </div>
+          </div>
+          <TraceableSentences data={traceableSentences} grade={grade} interest={interest} />
+        </div>
+      )}
+
+      {/* Standard Result */}
+      {!isTraceable && result && !generating && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{grade}</span> ·
+              <span>{activityType}</span> ·
+              <span className="px-2 py-0.5 rounded-full bg-newton-green/10 text-newton-green text-xs font-semibold">🎯 {interest}</span>
+            </div>
+            <div className="flex gap-2 no-print">
+              <Button onClick={handleSave} disabled={saving || saved} className={`rounded-full text-white gap-2 shadow-md transition-all ${saved ? "bg-newton-green shadow-newton-green/25" : "bg-newton-pink hover:bg-newton-pink/90 shadow-newton-pink/25"}`}>
+                <BookmarkPlus className="w-4 h-4" />{saving ? "Saving..." : saved ? "Saved! ✅" : "Add to Skill Builders"}
+              </Button>
+              <Button onClick={() => window.print()} variant="outline" className="rounded-full gap-2 border-newton-green/60 text-newton-green hover:bg-newton-green/10">
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+            </div>
+          </div>
+          <div className="sightword-print-root bg-white rounded-2xl p-8 shadow-sm border border-border/50">
+            <div className="max-w-2xl mx-auto">
+              {activityType === "Color by Word"
+                ? <ColorByWordActivity result={result} />
+                : renderResult(result)
+              }
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Lexend:wght@400;600&display=swap');
+
+        .traceable-word {
+          font-family: 'Patrick Hand', cursive;
+          font-size: 1.6rem;
+          letter-spacing: 0.1em;
+          opacity: 0.3;
+          color: black;
+        }
+
+        .trace-build-word {
+          font-family: 'Lexend', 'Comic Sans MS', sans-serif;
+          font-size: 2.2rem;
+          letter-spacing: 0.35em;
+          color: #1A2B3C;
+          opacity: 0.25;
+          display: inline-block;
+          border-bottom: 2.5px dashed #94A3B8;
+          padding-bottom: 2px;
+        }
+
+        @media print {
+          body * { visibility: hidden !important; }
+
+          .sightword-print-root,
+          .sightword-print-root * { visibility: visible !important; }
+          .sightword-print-root {
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important;
+            padding: 0.5in !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            font-size: 14pt;
+            line-height: 2.2;
+            letter-spacing: 0.05em;
+          }
+          .sightword-print-root * { color: black !important; text-decoration: none !important; font-weight: normal !important; }
+          .traceable-word { color: black !important; opacity: 0.3 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+          .no-print { display: none !important; }
+          nav, header, aside, footer, button,
+          [data-radix-popper-content-wrapper] { display: none !important; }
+          @page { margin: 0.5in; size: letter; }
+        }
+      `}</style>
+    </div>
+  );
+}
