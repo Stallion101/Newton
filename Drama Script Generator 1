@@ -1,0 +1,375 @@
+import { useState, useEffect } from "react";
+import { Theater, Sparkles, RefreshCw, BookmarkPlus, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+
+const GRADES = ["Pre-K", "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5"];
+
+const SEL_SUGGESTIONS = [
+  { label: "🚶 Walking in the Hallway", topic: "Walking quietly in the hallway with my class" },
+  { label: "🎮 When a Game is Over", topic: "Managing feelings when a game or activity ends" },
+  { label: "🙋 Asking a Friend to Play", topic: "How to ask a friend if I can play with them" },
+];
+const GENRES = [
+  "Folktale Retelling",
+  "Historical Event",
+  "Fable",
+  "Original Fantasy",
+];
+
+export default function DramaScriptGenerator() {
+  const [grade, setGrade] = useState("Grade 2");
+  const [numChars, setNumChars] = useState(3);
+  const [genre, setGenre] = useState("Fable");
+  const [literacyGoal, setLiteracyGoal] = useState("");
+  const [script, setScript] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const isSEL = false; // Drama Script Generator no longer handles SEL
+
+  useEffect(() => {
+    const defaultGenre = localStorage.getItem("drama_default_genre");
+    if (defaultGenre) {
+      setGenre(defaultGenre);
+      localStorage.removeItem("drama_default_genre");
+    }
+  }, []);
+
+  function handleSuggestion(suggestion) {
+    setLiteracyGoal(suggestion.topic);
+    setGenre("Social-Emotional (SEL)");
+    handleGenerate(suggestion.topic);
+  }
+
+  async function handleGenerate(overrideTopic) {
+    setGenerating(true);
+    setScript(null);
+
+    const activeTopic = overrideTopic !== undefined ? overrideTopic : literacyGoal;
+
+    const prompt = `You are a creative curriculum writer for elementary school teachers.
+
+Write a short theatrical drama script for ${grade} students. It must:
+- Genre/Theme: ${genre}
+- Number of speaking characters: ${numChars}
+- Literacy Goal: ${activeTopic || literacyGoal || "General reading fluency and expression"}
+- Use grade-appropriate vocabulary for ${grade}
+- Directly reinforce the literacy goal through the dialogue or plot
+
+Format rules (STRICTLY follow these):
+1. Start with a title line: TITLE: [Title of Script]
+2. Then a brief SETTING: [description]  
+3. For each character speaking use: CHARACTER NAME: dialogue
+4. Stage directions must be wrapped in parentheses on their own line, like: (Stage direction here)
+5. Keep the script to 1–2 pages (about 20–35 lines of dialogue)
+6. End with CURTAIN.
+
+Return only the script text, nothing else.`;
+
+    const result = await base44.integrations.Core.InvokeLLM({ prompt });
+    setScript(typeof result === "string" ? result : result?.content || "");
+    setGenerating(false);
+  }
+
+  async function handleSaveToActivities() {
+    if (!script) return;
+    setSaving(true);
+    const titleMatch = script.match(/TITLE:\s*(.+)/i);
+    const title = titleMatch ? titleMatch[1].trim() : `${grade} ${genre} Drama Script`;
+    await base44.entities.Activity.create({
+      title,
+      type: "Lesson",
+      grade,
+      subject: "ELA",
+      content: script,
+      source_tool: "Drama Script Generator",
+    });
+    setSaving(false);
+    toast.success("Success! This resource is now available in your Skill Builders library.");
+  }
+
+  function renderSELStory(text) {
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+    const titleLine = lines.find(l => /^TITLE:/i.test(l));
+    const title = titleLine ? titleLine.replace(/^TITLE:\s*/i, "") : "";
+
+    // Split into body paragraphs and reflection questions
+    const reflIdx = lines.findIndex(l => /^REFLECTION QUESTIONS/i.test(l));
+    const bodyLines = lines.filter(l => !(/^TITLE:/i.test(l)));
+    const storyLines = reflIdx > -1 ? bodyLines.slice(0, bodyLines.findIndex(l => /^REFLECTION QUESTIONS/i.test(l))) : bodyLines;
+    const reflLines = reflIdx > -1 ? lines.slice(reflIdx + 1).filter(l => /^\d\./.test(l)) : [];
+
+    // Group story lines into paragraphs (split on blank original lines)
+    const rawParagraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p && !/^TITLE:/i.test(p) && !/^REFLECTION/i.test(p));
+
+    return (
+      <div className="space-y-1">
+        {title && (
+          <h2 className="font-bold text-newton-pink text-xl mb-4 text-center">{title}</h2>
+        )}
+        {rawParagraphs.map((para, i) => (
+          <div key={i} className="mb-6">
+            {/* Drawing box */}
+            <div className="w-full border-2 border-dashed border-border/60 rounded-xl mb-3 flex items-center justify-center bg-secondary/20"
+              style={{ minHeight: "120px" }}>
+              <span className="text-xs text-muted-foreground italic">✏️ Draw it here</span>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground">{para}</p>
+          </div>
+        ))}
+        {reflLines.length > 0 && (
+          <div className="mt-6 p-4 bg-newton-pink/5 rounded-xl border border-newton-pink/20">
+            <h3 className="font-bold text-newton-pink text-sm mb-3">💬 Reflection Questions</h3>
+            <ol className="space-y-2">
+              {reflLines.map((q, i) => (
+                <li key={i} className="text-sm text-foreground">{q}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderScript(text) {
+    return text.split("\n").map((line, i) => {
+      const trimmed = line.trim();
+      if (!trimmed) return <div key={i} className="h-3" />;
+
+      if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+        return (
+          <p key={i} className="italic text-muted-foreground text-sm my-1 pl-4">
+            {trimmed}
+          </p>
+        );
+      }
+
+      if (/^(TITLE:|SETTING:|CURTAIN\.?)/i.test(trimmed)) {
+        return (
+          <p key={i} className="font-bold text-newton-pink text-sm mb-2 mt-3">
+            {trimmed}
+          </p>
+        );
+      }
+
+      const charMatch = trimmed.match(/^([A-Z][A-Z\s]+):\s*(.*)$/);
+      if (charMatch) {
+        return (
+          <p key={i} className="text-sm mb-1">
+            <span className="font-bold text-foreground">{charMatch[1]}:</span>{" "}
+            <span>{charMatch[2]}</span>
+          </p>
+        );
+      }
+
+      return (
+        <p key={i} className="text-sm mb-1 text-muted-foreground">
+          {trimmed}
+        </p>
+      );
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Config Card */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/50">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-newton-pink flex items-center justify-center">
+            <Theater className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-display font-bold text-xl text-newton-pink">Drama Script Generator</h2>
+            <p className="text-sm text-muted-foreground">AI-powered theatrical scripts aligned to literacy goals</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+          {/* Grade */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Grade Level</Label>
+            <Select value={grade} onValueChange={setGrade}>
+              <SelectTrigger className="rounded-xl border-border/60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GRADES.map((g) => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Genre */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Genre / Theme</Label>
+            <Select value={genre} onValueChange={setGenre}>
+              <SelectTrigger className="rounded-xl border-border/60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GENRES.map((g) => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Characters Slider */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">
+              Number of Characters <span className="text-newton-pink font-bold">({numChars})</span>
+            </Label>
+            <div className="pt-2 px-1">
+              <Slider
+                min={2}
+                max={6}
+                step={1}
+                value={[numChars]}
+                onValueChange={([v]) => setNumChars(v)}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>2</span><span>6</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Literacy Goal */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Literacy Goal</Label>
+            <Input
+              placeholder="e.g. Practice using context clues"
+              value={literacyGoal}
+              onChange={(e) => setLiteracyGoal(e.target.value)}
+              className="rounded-xl border-border/60"
+            />
+          </div>
+        </div>
+
+        {/* Generate Button */}
+        <div className="flex justify-end gap-3">
+          {script && (
+            <Button
+              onClick={() => { setScript(null); handleGenerate(); }}
+              variant="outline"
+              className="rounded-full border-newton-pink/40 text-newton-pink hover:bg-newton-pink/10 gap-2"
+            >
+              <RefreshCw className="w-4 h-4" /> Regenerate
+            </Button>
+          )}
+          <Button
+            onClick={() => handleGenerate()}
+            disabled={generating}
+            className="rounded-full bg-newton-pink hover:bg-newton-pink/90 text-white shadow-md shadow-newton-pink/30 px-6 gap-2"
+          >
+            {generating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Generating Script...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate Script
+              </>
+            )}
+          </Button>
+        </div>
+
+
+      </div>
+
+      {/* Empty State */}
+      {!script && !generating && (
+        <div className="bg-white rounded-2xl border-2 border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-newton-pink/10 flex items-center justify-center mb-4">
+            <Theater className="w-8 h-8 text-newton-pink" />
+          </div>
+          <h3 className="font-display font-semibold text-lg mb-2">Ready to write</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Choose a grade, genre, and literacy goal, then click Generate Script to create a classroom-ready drama.
+          </p>
+        </div>
+      )}
+
+      {/* Loading shimmer */}
+      {generating && (
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-border/50 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-newton-pink/20 border-t-newton-pink rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Writing your drama script… this takes about 10 seconds.</p>
+        </div>
+      )}
+
+      {/* Script Canvas */}
+      {script && !generating && (
+        <div className="space-y-4">
+          {/* Action bar */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{grade}</span> ·
+              <span>{genre}</span> ·
+              <span className="px-2 py-0.5 rounded-full bg-newton-pink/10 text-newton-pink text-xs font-semibold">{numChars} characters</span>
+            </div>
+            <div className="flex gap-2 flex-wrap no-print">
+              <Button
+                onClick={handleSaveToActivities}
+                disabled={saving}
+                className="rounded-full bg-newton-pink hover:bg-newton-pink/90 text-white gap-2 shadow-md shadow-newton-pink/25"
+              >
+                <BookmarkPlus className="w-4 h-4" />
+                {saving ? "Saving..." : "Add to Skill Builders"}
+              </Button>
+              <Button
+                onClick={() => window.print()}
+                variant="outline"
+                className="rounded-full gap-2 border-[#B3005C] text-[#B3005C] hover:bg-[#B3005C]/10"
+              >
+                <Printer className="w-4 h-4" /> Print Script
+              </Button>
+            </div>
+          </div>
+
+          {/* Script display */}
+          <div className="drama-print-root bg-white rounded-2xl p-8 shadow-sm border border-border/50">
+            {/* Print-only header */}
+            <div className="hidden drama-print-header mb-6 pb-4 border-b-2 border-black">
+              <p className="text-xs text-gray-500 mb-1">NEWTON Learning · Drama Script</p>
+              <p className="text-sm"><strong>Grade:</strong> {grade} &nbsp;·&nbsp; <strong>Genre:</strong> {genre} &nbsp;·&nbsp; <strong>Literacy Goal:</strong> {literacyGoal || "General reading fluency"}</p>
+            </div>
+            <div className="max-w-2xl mx-auto font-mono leading-relaxed">
+              {renderScript(script)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .drama-print-root, .drama-print-root * { visibility: visible; }
+          .drama-print-root {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            font-family: Georgia, serif;
+            line-height: 2 !important;
+          }
+          .drama-print-header { display: block !important; }
+          .no-print { display: none !important; }
+          nav, header, aside, footer, button { display: none !important; }
+          @page { margin: 0.75in; size: letter; }
+        }
+      `}</style>
+    </div>
+  );
+}
